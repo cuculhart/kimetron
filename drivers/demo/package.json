@@ -1,7 +1,7 @@
 {
   "name": "demo",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,9 +10,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@kimetron/core": "0.1.0",
-    "@kimetron/dom": "0.1.0",
-    "@kimetron/react": "0.1.0",
+    "@kimetron/core": "0.2.0",
+    "@kimetron/dom": "0.2.0",
+    "@kimetron/react": "0.2.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },

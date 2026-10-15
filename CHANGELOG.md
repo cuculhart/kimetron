@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-16
+
 ### Added
 
 - `@kimetron/core`: resize gesture — 8 screen-space handles on a single
@@ -27,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   shortcuts (Ctrl+Z/Y, Ctrl+D)
 
 ## [0.1.0] - 2026-10-15
+
 
 ### Added
 

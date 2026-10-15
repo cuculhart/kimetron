@@ -33,4 +33,4 @@ export {
 export type { ZOrder } from './doc'
 export { Engine } from './engine'
 export type { PointerOpts, EngineListener, ResizeDir, Guide } from './engine'
-export const KIMETRON_VERSION = '0.1.0'
+export const KIMETRON_VERSION = '0.2.0'

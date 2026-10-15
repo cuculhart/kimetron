@@ -1,11 +1,140 @@
-import { KIMETRON_VERSION } from '@kimetron/core'
+import { useEffect, useRef } from 'react'
+import { deserializeDoc, formatLength, serializeDoc } from '@kimetron/core'
+import type { Origin, Unit } from '@kimetron/core'
+import { IsleCanvas, useEngine, useEngineVersion } from '@kimetron/react'
+import './styles.css'
+
+const UNITS: Unit[] = ['mm', 'cm', 'm', 'inch', 'px']
+const ORIGINS: Origin[] = ['bottom-left', 'top-left']
+
+let counter = 0
+const nextId = () => `r${++counter}`
 
 export function App() {
+  const engine = useEngine({
+    units: 'mm',
+    origin: 'bottom-left',
+    grid: { size: 10, snap: true },
+  })
+  useEngineVersion(engine)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  const seeded = useRef(false)
+  useEffect(() => {
+    if (seeded.current) return
+    seeded.current = true
+    engine.addObject({ id: 'a', kind: 'rect', x: 10, y: 10, w: 80, h: 40 })
+    engine.addObject({ id: 'b', kind: 'rect', x: 110, y: 60, w: 50, h: 30 })
+    engine.addObject({ id: 'c', kind: 'rect', x: 40, y: 110, w: 60, h: 50 })
+  }, [engine])
+
+  const { doc, viewport } = engine
+  const u = doc.units
+
+  const addRect = () => {
+    const s = doc.grid.size
+    engine.addObject({
+      id: nextId(),
+      kind: 'rect',
+      x: Math.round(Math.random() * 20) * s * 0.2 + s,
+      y: Math.round(Math.random() * 15) * s * 0.2 + s,
+      w: s * 4,
+      h: s * 3,
+    })
+  }
+
+  const save = () => {
+    const blob = new Blob([serializeDoc(engine.doc)], { type: 'application/json' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = 'kimetron-doc.json'
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }
+
+  const load = (file: File) => {
+    file.text().then((t) => engine.setDoc(deserializeDoc(t)))
+  }
+
   return (
-    <main style={{ fontFamily: 'monospace', padding: '2rem' }}>
-      <h1>Kimetron Isle</h1>
-      <p>World-coordinate canvas engine — position is data.</p>
-      <p>engine v{KIMETRON_VERSION} — playground under construction.</p>
-    </main>
+    <div className="app" onKeyDown={(e) => e.key === 'Delete' && engine.removeSelected()} tabIndex={0}>
+      <header className="bar">
+        <strong>Kimetron Isle</strong>
+        <label>
+          units
+          <select value={doc.units} onChange={(e) => engine.setUnits(e.target.value as Unit)}>
+            {UNITS.map((v) => (
+              <option key={v}>{v}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          origin
+          <select value={doc.origin} onChange={(e) => engine.setOrigin(e.target.value as Origin)}>
+            {ORIGINS.map((v) => (
+              <option key={v}>{v}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          grid
+          <input
+            type="number"
+            min={1}
+            step={1}
+            value={doc.grid.size}
+            onChange={(e) => engine.setGrid({ size: Number(e.target.value) || 1 })}
+          />
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={doc.grid.snap}
+            onChange={(e) => engine.setGrid({ snap: e.target.checked })}
+          />
+          snap
+        </label>
+        <span className="sep" />
+        <button onClick={addRect}>+ rect</button>
+        <button onClick={() => engine.removeSelected()} disabled={engine.selectedIds.size === 0}>
+          delete
+        </button>
+        <button onClick={save}>save JSON</button>
+        <button onClick={() => fileRef.current?.click()}>load JSON</button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".json"
+          hidden
+          onChange={(e) => e.target.files?.[0] && load(e.target.files[0])}
+        />
+      </header>
+      <IsleCanvas
+        engine={engine}
+        style={{ flex: 1 }}
+        renderObject={(o) => (
+          <div className="obj-label">
+            <b>{o.id}</b>
+            <span>
+              {formatLength(o.w, u)} × {formatLength(o.h, u)}
+            </span>
+            <span>
+              ({formatLength(o.x, u)}, {formatLength(o.y, u)})
+            </span>
+          </div>
+        )}
+      />
+      <footer className="bar">
+        <span>scale {engine.scaleText()}</span>
+        <span>zoom {(viewport.zoom * 100).toFixed(0)}%</span>
+        <span>
+          cursor ({formatLength(engine.cursorWorld.x, u)},{' '}
+          {formatLength(engine.cursorWorld.y, u)})
+        </span>
+        <span>selected {engine.selectedIds.size}</span>
+        <span className="sep" />
+        <span className="hint">drag object: move / drag empty: marquee / shift+click: multi / mid-drag: pan / wheel: zoom</span>
+      </footer>
+    </div>
   )
 }

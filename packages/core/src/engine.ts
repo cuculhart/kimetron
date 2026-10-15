@@ -1,12 +1,17 @@
 import {
+  addEdge,
   addObject,
   createDocument,
+  edgeEndpoints,
+  endpointPos,
   moveObjects,
+  removeEdges,
   removeObjects,
   reorderObjects,
   resizeObject,
   type ZOrder,
 } from './doc'
+import { distToGeom, edgeGeom } from './edge'
 import {
   pointInRect,
   rectBetween,
@@ -15,10 +20,10 @@ import {
   screenToWorld,
   worldToScreen,
 } from './geometry'
-import type { Doc, GridConfig, Origin, Pt, Rect, Unit, Viewport, WorldConfig, WorldObject } from './types'
+import type { Doc, Edge, EdgeEndpoint, EdgeRoute, GridConfig, Origin, Pt, Rect, Unit, Viewport, WorldConfig, WorldObject } from './types'
 import { formatScale, unitToPx } from './units'
 
-type Mode = 'idle' | 'drag' | 'marquee' | 'pan' | 'resize'
+type Mode = 'idle' | 'drag' | 'marquee' | 'pan' | 'resize' | 'connect'
 
 export interface PointerOpts {
   button?: number
@@ -43,6 +48,8 @@ const ZOOM_MIN = 0.02
 const ZOOM_MAX = 50
 const MIN_SIZE = 1e-3
 const SNAP_TOL_PX = 8
+const PORT_TOL_PX = 10
+const EDGE_TOL_PX = 6
 
 export class Engine {
   doc: Doc
@@ -51,6 +58,10 @@ export class Engine {
   dragDelta: Pt | null = null
   resize: { id: string; rect: Rect } | null = null
   guides: Guide[] = []
+  /** In-progress connect gesture: source endpoint and hovered target (if any). */
+  connect: { from: EdgeEndpoint; hover: EdgeEndpoint | null } | null = null
+  /** Route assigned to edges created by the connect gesture. */
+  connectRoute: Edge['route'] = 'straight'
   marquee: Rect | null = null
   cursorWorld: Pt = { x: 0, y: 0 }
   version = 0
@@ -162,7 +173,12 @@ export class Engine {
   setDoc(doc: Doc): void {
     this.doc = doc
     for (const id of [...this.selectedIds]) {
-      if (!doc.objects.some((o) => o.id === id)) this.selectedIds.delete(id)
+      if (
+        !doc.objects.some((o) => o.id === id) &&
+        !doc.edges.some((e) => e.id === id)
+      ) {
+        this.selectedIds.delete(id)
+      }
     }
     this.emitDoc()
   }
@@ -196,7 +212,10 @@ export class Engine {
     this.lastDoc = doc
     let selChanged = false
     for (const id of [...this.selectedIds]) {
-      if (!doc.objects.some((o) => o.id === id)) {
+      if (
+        !doc.objects.some((o) => o.id === id) &&
+        !doc.edges.some((e) => e.id === id)
+      ) {
         this.selectedIds.delete(id)
         selChanged = true
       }
@@ -218,7 +237,13 @@ export class Engine {
 
   removeSelected(): void {
     if (this.selectedIds.size === 0) return
-    this.doc = removeObjects(this.doc, this.selectedIds)
+    const objIds = [...this.selectedIds].filter((id) =>
+      this.doc.objects.some((o) => o.id === id),
+    )
+    const edgeIds = [...this.selectedIds].filter((id) =>
+      this.doc.edges.some((e) => e.id === id),
+    )
+    this.doc = removeEdges(removeObjects(this.doc, objIds), edgeIds)
     this.selectedIds.clear()
     this.emitDoc()
     this.emitSelection()
@@ -268,6 +293,71 @@ export class Engine {
     return null
   }
 
+  /** Nearest port to a screen point within PORT_TOL_PX, as an edge endpoint. */
+  portAt(screenPt: Pt): EdgeEndpoint | null {
+    const w = this.screenToWorld(screenPt)
+    const tol = PORT_TOL_PX / (unitToPx(this.doc.units) * this.viewport.zoom)
+    let best: EdgeEndpoint | null = null
+    let bd = tol
+    for (const o of this.doc.objects) {
+      for (const p of o.ports ?? []) {
+        const d = Math.hypot(o.x + p.x - w.x, o.y + p.y - w.y)
+        if (d <= bd) {
+          bd = d
+          best = { obj: o.id, port: p.id }
+        }
+      }
+    }
+    return best
+  }
+
+  /** Nearest edge to a screen point within EDGE_TOL_PX. */
+  edgeAt(screenPt: Pt): Edge | null {
+    const w = this.screenToWorld(screenPt)
+    const tol = EDGE_TOL_PX / (unitToPx(this.doc.units) * this.viewport.zoom)
+    let best: Edge | null = null
+    let bd = tol
+    for (const e of this.doc.edges) {
+      const ends = edgeEndpoints(this.doc, e)
+      if (!ends) continue
+      const d = distToGeom(w, edgeGeom(ends.from, ends.to, e.route))
+      if (d <= bd) {
+        bd = d
+        best = e
+      }
+    }
+    return best
+  }
+
+  /** Begin a connect gesture from a port (or object center if port omitted). */
+  startConnect(pt: Pt, obj: string, port?: string): void {
+    const o = this.doc.objects.find((o) => o.id === obj)
+    if (!o) return
+    this.mode = 'connect'
+    this.connect = { from: port ? { obj, port } : { obj }, hover: null }
+    this.cursorWorld = this.screenToWorld(pt)
+  }
+
+  /** Points for the live connect preview, or null. */
+  connectPreview(): { from: Pt; to: Pt } | null {
+    if (!this.connect) return null
+    const from = endpointPos(this.doc, this.connect.from)
+    if (!from) return null
+    const hover = this.connect.hover
+      ? endpointPos(this.doc, this.connect.hover)
+      : null
+    return { from, to: hover ?? this.cursorWorld }
+  }
+
+  private nextEdgeId(): string {
+    let n = 0
+    for (const e of this.doc.edges) {
+      const m = /^e(\d+)$/.exec(e.id)
+      if (m) n = Math.max(n, Number(m[1]))
+    }
+    return `e${n + 1}`
+  }
+
   // --- input (screen px, canvas-relative) ---
 
   /** Begin a resize gesture on `id`, moving the world-space edges given by `dir`. */
@@ -306,6 +396,20 @@ export class Engine {
       this.dragAnchor = { x: hit.x, y: hit.y }
       this.dragAnchorSize = { w: hit.w, h: hit.h }
       this.mode = 'drag'
+      return
+    }
+
+    const edge = this.edgeAt(pt)
+    if (edge) {
+      if (opts.additive) {
+        if (this.selectedIds.has(edge.id)) this.selectedIds.delete(edge.id)
+        else this.selectedIds.add(edge.id)
+        this.emitSelection()
+      } else {
+        this.setSelection([edge.id])
+      }
+      this.mode = 'idle'
+      this.emit()
       return
     }
 
@@ -403,6 +507,16 @@ export class Engine {
       return
     }
 
+    if (this.mode === 'connect' && this.connect) {
+      const hover = this.portAt(pt)
+      this.connect = {
+        ...this.connect,
+        hover: hover && hover.obj !== this.connect.from.obj ? hover : null,
+      }
+      this.emit()
+      return
+    }
+
     if (this.mode === 'pan' && this.vpStart) {
       this.viewport = {
         ...this.vpStart,
@@ -432,10 +546,21 @@ export class Engine {
         this.emitDoc()
       }
     }
+    if (this.mode === 'connect' && this.connect?.hover) {
+      const edge: Edge = {
+        id: this.nextEdgeId(),
+        from: this.connect.from,
+        to: this.connect.hover,
+        ...(this.connectRoute ? { route: this.connectRoute } : {}),
+      }
+      this.doc = addEdge(this.doc, edge)
+      this.emitDoc()
+    }
     this.mode = 'idle'
     this.dragDelta = null
     this.dragIds = []
     this.guides = []
+    this.connect = null
     this.resize = null
     this.resizeId = null
     this.resizeOrig = null

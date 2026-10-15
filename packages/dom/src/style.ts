@@ -1,5 +1,5 @@
-import type { Engine, Origin, ResizeDir } from '@kimetron/core'
-import { unitToPx } from '@kimetron/core'
+import type { Edge, EdgeRoute, Engine, Origin, Port, Pt, ResizeDir } from '@kimetron/core'
+import { edgeEndpoints, edgeGeom, unitToPx } from '@kimetron/core'
 
 export interface Frame {
   left: number
@@ -102,6 +102,42 @@ export function screenDirToWorld(dir: string, origin: Origin): ResizeDir {
   return { x, y }
 }
 
+// --- ports & edges ---
+
+/** Screen-space positions of an object's ports. */
+export function portPoints(
+  engine: Engine,
+  o: { id: string; x: number; y: number; ports?: Port[] },
+): { port: Port; x: number; y: number }[] {
+  return (o.ports ?? []).map((p) => {
+    const s = engine.worldToScreen({ x: o.x + p.x, y: o.y + p.y })
+    return { port: p, x: s.x, y: s.y }
+  })
+}
+
+/** SVG path `d` for a resolved world-space route. */
+export function routePathD(
+  engine: Engine,
+  from: Pt,
+  to: Pt,
+  route: EdgeRoute = 'straight',
+): string {
+  const g = edgeGeom(from, to, route)
+  if (g.kind === 'bezier') {
+    const [p0, c1, c2, p3] = g.pts.map((p) => engine.worldToScreen(p))
+    return `M ${p0.x} ${p0.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${p3.x} ${p3.y}`
+  }
+  const pts = g.pts.map((p) => engine.worldToScreen(p))
+  return pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
+}
+
+/** SVG path `d` for a document edge, or null if an endpoint is dangling. */
+export function edgePathD(engine: Engine, e: Edge): string | null {
+  const ends = edgeEndpoints(engine.doc, e)
+  if (!ends) return null
+  return routePathD(engine, ends.from, ends.to, e.route)
+}
+
 let injected = false
 
 export function injectStyles(): void {
@@ -120,6 +156,14 @@ export function injectStyles(): void {
 .ki-guide { position: absolute; background: var(--ki-guide, #e0393e); }
 .ki-guide-v { top: 0; bottom: 0; width: 1px; }
 .ki-guide-h { left: 0; right: 0; height: 1px; }
+.ki-edges { position: absolute; inset: 0; overflow: visible; pointer-events: none; z-index: 0; }
+.ki-edge { fill: none; stroke: var(--ki-edge-line, #7d8fa3); stroke-width: 1.5; }
+.ki-edge.ki-sel { stroke: var(--ki-sel, #3a7bd5); stroke-width: 2.5; }
+.ki-edge-preview { fill: none; stroke: var(--ki-sel, #3a7bd5); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.ki-obj { z-index: 1; }
+.ki-ports { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
+.ki-port { position: absolute; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: #fff; border: 1.5px solid var(--ki-edge-line, #7d8fa3); box-sizing: border-box; cursor: crosshair; pointer-events: auto; }
+.ki-port:hover { border-color: var(--ki-sel, #3a7bd5); background: var(--ki-sel, #3a7bd5); }
 `
   document.head.appendChild(el)
 }

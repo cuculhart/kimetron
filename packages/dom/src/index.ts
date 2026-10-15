@@ -1,4 +1,4 @@
-export { gridBackground, objectFrame, marqueeFrame, handlePoints, screenDirToWorld, injectStyles } from './style'
+export { gridBackground, objectFrame, marqueeFrame, handlePoints, screenDirToWorld, portPoints, edgePathD, routePathD, injectStyles } from './style'
 export type { Frame, HandleDir, HandlePoint } from './style'
 export { attachInput } from './input'
 export { createRenderer } from './renderer'

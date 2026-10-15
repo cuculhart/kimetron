@@ -1,11 +1,20 @@
 import { useEffect, useRef } from 'react'
 import { deserializeDoc, formatLength, serializeDoc } from '@kimetron/core'
-import type { Origin, Unit } from '@kimetron/core'
+import type { EdgeRoute, Origin, Port, Unit } from '@kimetron/core'
 import { IsleCanvas, useEngine, useEngineVersion } from '@kimetron/react'
 import './styles.css'
 
 const UNITS: Unit[] = ['mm', 'cm', 'm', 'inch', 'px']
 const ORIGINS: Origin[] = ['bottom-left', 'top-left']
+const ROUTES: EdgeRoute[] = ['straight', 'orthogonal', 'bezier']
+
+/** 4 ports at the edge midpoints, in object-local world units. */
+const ports4 = (w: number, h: number): Port[] => [
+  { id: 'l', x: 0, y: h / 2 },
+  { id: 't', x: w / 2, y: h },
+  { id: 'r', x: w, y: h / 2 },
+  { id: 'b', x: w / 2, y: 0 },
+]
 
 function nextId(objects: { id: string }[]): string {
   let max = 0
@@ -29,9 +38,9 @@ export function App() {
   useEffect(() => {
     if (seeded.current) return
     seeded.current = true
-    engine.addObject({ id: 'a', kind: 'rect', x: 10, y: 10, w: 80, h: 40 })
-    engine.addObject({ id: 'b', kind: 'rect', x: 110, y: 60, w: 50, h: 30 })
-    engine.addObject({ id: 'c', kind: 'rect', x: 40, y: 110, w: 60, h: 50 })
+    engine.addObject({ id: 'a', kind: 'rect', x: 10, y: 10, w: 80, h: 40, ports: ports4(80, 40) })
+    engine.addObject({ id: 'b', kind: 'rect', x: 110, y: 60, w: 50, h: 30, ports: ports4(50, 30) })
+    engine.addObject({ id: 'c', kind: 'rect', x: 40, y: 110, w: 60, h: 50, ports: ports4(60, 50) })
   }, [engine])
 
   const { doc, viewport } = engine
@@ -46,6 +55,7 @@ export function App() {
       y: (1 + Math.floor(Math.random() * 10)) * s,
       w: s * 4,
       h: s * 3,
+      ports: ports4(s * 4, s * 3),
     })
   }
 
@@ -113,6 +123,17 @@ export function App() {
           />
           snap
         </label>
+        <label>
+          route
+          <select
+            value={engine.connectRoute}
+            onChange={(e) => (engine.connectRoute = e.target.value as EdgeRoute)}
+          >
+            {ROUTES.map((v) => (
+              <option key={v}>{v}</option>
+            ))}
+          </select>
+        </label>
         <span className="sep" />
         <button onClick={addRect}>+ rect</button>
         <button onClick={() => engine.duplicateSelected()} disabled={engine.selectedIds.size === 0}>
@@ -168,8 +189,9 @@ export function App() {
           {formatLength(engine.cursorWorld.y, u)})
         </span>
         <span>selected {engine.selectedIds.size}</span>
+        <span>edges {doc.edges.length}</span>
         <span className="sep" />
-        <span className="hint">drag: move / handle: resize / empty-drag: marquee / ctrl+z: undo / ctrl+d: duplicate / mid-drag: pan / wheel: zoom / trackpad: pan·pinch</span>
+        <span className="hint">drag: move / handle: resize / port-drag: connect / empty-drag: marquee / ctrl+z: undo / ctrl+d: duplicate / mid-drag: pan / wheel: zoom / trackpad: pan·pinch</span>
       </footer>
     </div>
   )

@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `@kimetron/core`: edges and ports — `Doc.edges`, `Port` (object-local
+  world-unit offsets), `Edge` as pure reference data (from/to endpoints,
+  `route`, `label`); `schemaVersion: 2` with tolerant reading of v1 docs;
+  `removeObjects` prunes referencing edges (no orphans)
+- `@kimetron/core`: edge routes — straight / orthogonal / bezier geometry
+  (`edgeGeom`), polyline hit-testing (`distToGeom`)
+- `@kimetron/core`: connect gesture — `startConnect` port-to-port drag,
+  port snapping, self-connect rejection, live preview (`connectPreview`);
+  `engine.connectRoute` picks the route of new edges
+- `@kimetron/core`: edge selection — `edgeAt` hit test, edges share
+  `selectedIds`, Delete removes selected objects and edges
+- `@kimetron/dom`: SVG edge layer (`.ki-edges`), port dots (`.ki-port`,
+  `data-ki-port` input), dashed connect preview, `.ki-edge` styles
+- `drivers/demo`: 4-port rectangles, route switcher, edge count,
+  connect gesture in the playground and vanilla page
+
 ## [0.2.0] - 2026-10-16
 
 ### Added

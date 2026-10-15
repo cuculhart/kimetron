@@ -2,7 +2,7 @@ import { useEffect, useRef, useSyncExternalStore } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { Engine } from '@kimetron/core'
 import type { Doc, WorldConfig, WorldObject } from '@kimetron/core'
-import { attachInput, gridBackground, handlePoints, injectStyles, marqueeFrame, objectFrame } from '@kimetron/dom'
+import { attachInput, edgePathD, gridBackground, handlePoints, injectStyles, marqueeFrame, objectFrame, portPoints, routePathD } from '@kimetron/dom'
 
 export function useEngine(cfg?: WorldConfig): Engine {
   const ref = useRef<Engine | null>(null)
@@ -61,6 +61,7 @@ export function IsleCanvas({
   }, [autoOrigin, origin, engine])
 
   const marquee = marqueeFrame(engine)
+  const connectPreview = engine.connectPreview()
   const selObj =
     engine.selectedIds.size === 1
       ? engine.doc.objects.find((o) => engine.selectedIds.has(o.id))
@@ -73,6 +74,25 @@ export function IsleCanvas({
       className={className ?? 'ki-canvas'}
       style={{ ...gridBackground(engine), ...style }}
     >
+      <svg className="ki-edges">
+        {engine.doc.edges.map((e) => {
+          const d = edgePathD(engine, e)
+          if (!d) return null
+          return (
+            <path
+              key={e.id}
+              className={engine.selectedIds.has(e.id) ? 'ki-edge ki-sel' : 'ki-edge'}
+              d={d}
+            />
+          )
+        })}
+        {connectPreview && (
+          <path
+            className="ki-edge-preview"
+            d={routePathD(engine, connectPreview.from, connectPreview.to, 'straight')}
+          />
+        )}
+      </svg>
       {engine.doc.objects.map((o) => {
         const f = objectFrame(engine, o)
         return (
@@ -89,6 +109,19 @@ export function IsleCanvas({
           </div>
         )
       })}
+      <div className="ki-ports">
+        {engine.doc.objects.flatMap((o) =>
+          portPoints(engine, o).map(({ port, x, y }) => (
+            <div
+              key={`${o.id}:${port.id}`}
+              className="ki-port"
+              data-ki-obj={o.id}
+              data-ki-port={port.id}
+              style={{ transform: `translate(${x}px, ${y}px)` }}
+            />
+          )),
+        )}
+      </div>
       {engine.guides.map((g, i) => {
         const pos = engine.worldToScreen({ x: g.at, y: g.at })
         return (

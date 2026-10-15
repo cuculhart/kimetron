@@ -1,12 +1,13 @@
-import type { Doc, WorldConfig, WorldObject } from './types'
+import type { Doc, Edge, Pt, WorldConfig, WorldObject } from './types'
 
 export function createDocument(cfg: WorldConfig = {}): Doc {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     units: cfg.units ?? 'mm',
     origin: cfg.origin ?? 'bottom-left',
     grid: { size: cfg.grid?.size ?? 10, snap: cfg.grid?.snap ?? true },
     objects: [],
+    edges: [],
   }
 }
 
@@ -31,7 +32,41 @@ export function moveObjects(doc: Doc, ids: Iterable<string>, dx: number, dy: num
 
 export function removeObjects(doc: Doc, ids: Iterable<string>): Doc {
   const set = new Set(ids)
-  return { ...doc, objects: doc.objects.filter((o) => !set.has(o.id)) }
+  return {
+    ...doc,
+    objects: doc.objects.filter((o) => !set.has(o.id)),
+    // edges referencing removed objects are dropped (no orphans)
+    edges: doc.edges.filter(
+      (e) => !set.has(e.from.obj) && !set.has(e.to.obj),
+    ),
+  }
+}
+
+export function addEdge(doc: Doc, e: Edge): Doc {
+  return { ...doc, edges: [...doc.edges, e] }
+}
+
+export function removeEdges(doc: Doc, ids: Iterable<string>): Doc {
+  const set = new Set(ids)
+  return { ...doc, edges: doc.edges.filter((e) => !set.has(e.id)) }
+}
+
+/** Resolve an endpoint to a world point, or null if the target is gone. */
+export function endpointPos(doc: Doc, ep: { obj: string; port?: string }): Pt | null {
+  const o = doc.objects.find((o) => o.id === ep.obj)
+  if (!o) return null
+  if (ep.port) {
+    const p = o.ports?.find((p) => p.id === ep.port)
+    if (p) return { x: o.x + p.x, y: o.y + p.y }
+  }
+  return { x: o.x + o.w / 2, y: o.y + o.h / 2 }
+}
+
+/** World points of both ends of an edge, or null if either end is dangling. */
+export function edgeEndpoints(doc: Doc, e: Edge): { from: Pt; to: Pt } | null {
+  const from = endpointPos(doc, e.from)
+  const to = endpointPos(doc, e.to)
+  return from && to ? { from, to } : null
 }
 
 export type ZOrder = 'front' | 'back' | 'forward' | 'backward'
@@ -101,7 +136,27 @@ export function deserializeDoc(json: string): Doc {
       y: Number(o.y) || 0,
       w: Number(o.w) || 0,
       h: Number(o.h) || 0,
+      ...(Array.isArray(o.ports)
+        ? {
+            ports: o.ports.map((p) => ({
+              id: String(p.id),
+              x: Number(p.x) || 0,
+              y: Number(p.y) || 0,
+            })),
+          }
+        : {}),
       ...(o.data !== undefined ? { data: o.data } : {}),
     })),
+    edges: Array.isArray(raw.edges)
+      ? raw.edges
+          .filter((e) => e && e.from && e.to)
+          .map((e) => ({
+            id: String(e.id),
+            from: { obj: String(e.from.obj), ...(e.from.port ? { port: String(e.from.port) } : {}) },
+            to: { obj: String(e.to.obj), ...(e.to.port ? { port: String(e.to.port) } : {}) },
+            ...(e.route ? { route: e.route } : {}),
+            ...(e.label !== undefined ? { label: String(e.label) } : {}),
+          }))
+      : [],
   }
 }

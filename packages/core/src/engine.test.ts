@@ -293,6 +293,80 @@ describe('history edge cases', () => {
   })
 })
 
+describe('edges and ports', () => {
+  const cfg = { units: 'mm' as const, origin: 'bottom-left' as const, grid: { size: 10, snap: true } }
+  const two = [
+    { id: 'a', kind: 'rect', x: 0, y: 0, w: 40, h: 30, ports: [{ id: 'r', x: 40, y: 15 }] },
+    { id: 'b', kind: 'rect', x: 100, y: 0, w: 40, h: 30, ports: [{ id: 'l', x: 0, y: 15 }] },
+  ]
+  const make = () => {
+    const e = new Engine(cfg, two)
+    e.viewport = { x: 0, y: 500, zoom: 1 }
+    return e
+  }
+
+  it('connect gesture commits an edge port-to-port', () => {
+    const e = make()
+    e.startConnect(e.worldToScreen({ x: 40, y: 15 }), 'a', 'r')
+    e.pointerMove(e.worldToScreen({ x: 60, y: 15 }))
+    expect(e.connect).not.toBeNull()
+    expect(e.connectPreview()?.to.x).toBeCloseTo(60)
+    expect(e.connectPreview()?.to.y).toBeCloseTo(15)
+    // hover over b's left port (at world 100,15)
+    e.pointerMove(e.worldToScreen({ x: 99, y: 16 }))
+    expect(e.connect?.hover).toEqual({ obj: 'b', port: 'l' })
+    e.pointerUp()
+    expect(e.doc.edges).toHaveLength(1)
+    expect(e.doc.edges[0]).toMatchObject({ id: 'e1', from: { obj: 'a', port: 'r' }, to: { obj: 'b', port: 'l' } })
+  })
+
+  it('cancels connect on empty drop and rejects self-connect', () => {
+    const e = make()
+    e.startConnect(e.worldToScreen({ x: 40, y: 15 }), 'a', 'r')
+    e.pointerMove(e.worldToScreen({ x: 200, y: 100 }))
+    e.pointerUp()
+    expect(e.doc.edges).toHaveLength(0)
+    // same-object port hover is not a valid target
+    e.startConnect(e.worldToScreen({ x: 40, y: 15 }), 'a', 'r')
+    e.pointerMove(e.worldToScreen({ x: 39, y: 15 }))
+    expect(e.connect?.hover).toBeNull()
+    e.pointerUp()
+    expect(e.doc.edges).toHaveLength(0)
+  })
+
+  it('edge click selects and Delete removes; object removal prunes edges', () => {
+    const e = make()
+    e.startConnect(e.worldToScreen({ x: 40, y: 15 }), 'a', 'r')
+    e.pointerMove(e.worldToScreen({ x: 99, y: 16 }))
+    e.pointerUp()
+    // click near the edge midpoint (world ~70,15)
+    e.pointerDown(e.worldToScreen({ x: 70, y: 16 }))
+    e.pointerUp()
+    expect(e.selectedIds.has('e1')).toBe(true)
+    e.removeSelected()
+    expect(e.doc.edges).toHaveLength(0)
+    // reconnect, then delete object 'b' → edge pruned
+    e.startConnect(e.worldToScreen({ x: 40, y: 15 }), 'a', 'r')
+    e.pointerMove(e.worldToScreen({ x: 99, y: 16 }))
+    e.pointerUp()
+    expect(e.doc.edges).toHaveLength(1)
+    e.setSelection(['b'])
+    e.removeSelected()
+    expect(e.doc.edges).toHaveLength(0)
+  })
+
+  it('serializes edges and reads v1 docs without them', () => {
+    const e = make()
+    e.startConnect(e.worldToScreen({ x: 40, y: 15 }), 'a', 'r')
+    e.pointerMove(e.worldToScreen({ x: 99, y: 16 }))
+    e.pointerUp()
+    const out = deserializeDoc(serializeDoc(e.doc))
+    expect(out.edges).toEqual(e.doc.edges)
+    const v1 = JSON.stringify({ units: 'mm', origin: 'bottom-left', grid: { size: 10, snap: true }, objects: [] })
+    expect(deserializeDoc(v1).edges).toEqual([])
+  })
+})
+
 describe('doc serialize', () => {
   it('roundtrips units/origin/grid/objects', () => {
     const doc = createDocument({ units: 'inch', origin: 'top-left', grid: { size: 0.5, snap: false } })

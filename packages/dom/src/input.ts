@@ -11,12 +11,17 @@ export function attachInput(el: HTMLElement, engine: Engine): () => void {
     const handle = (e.target as HTMLElement).closest?.(
       '[data-ki-handle]',
     ) as HTMLElement | null
+    const port = (e.target as HTMLElement).closest?.(
+      '[data-ki-port]',
+    ) as HTMLElement | null
     if (handle?.dataset.kiObj) {
       engine.startResize(
         toLocal(e),
         handle.dataset.kiObj,
         screenDirToWorld(handle.dataset.kiHandle ?? '', engine.doc.origin),
       )
+    } else if (port?.dataset.kiObj) {
+      engine.startConnect(toLocal(e), port.dataset.kiObj, port.dataset.kiPort)
     } else {
       engine.pointerDown(toLocal(e), {
         button: e.button,

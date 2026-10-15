@@ -1,6 +1,14 @@
 import type { Engine, WorldObject } from '@kimetron/core'
 import { attachInput } from './input'
-import { handlePoints, injectStyles, marqueeFrame, objectFrame } from './style'
+import {
+  edgePathD,
+  handlePoints,
+  injectStyles,
+  marqueeFrame,
+  objectFrame,
+  portPoints,
+  routePathD,
+} from './style'
 
 export interface RendererOptions {
   engine: Engine
@@ -18,10 +26,18 @@ export function createRenderer(container: HTMLElement, opts: RendererOptions): R
   injectStyles()
   container.classList.add('ki-canvas')
 
+  const edgeSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+  edgeSvg.setAttribute('class', 'ki-edges')
+  container.appendChild(edgeSvg)
+
   const marqueeEl = document.createElement('div')
   marqueeEl.className = 'ki-marquee'
   marqueeEl.style.display = 'none'
   container.appendChild(marqueeEl)
+
+  const portLayer = document.createElement('div')
+  portLayer.className = 'ki-ports'
+  container.appendChild(portLayer)
 
   const guideLayer = document.createElement('div')
   guideLayer.className = 'ki-guides'
@@ -84,6 +100,36 @@ export function createRenderer(container: HTMLElement, opts: RendererOptions): R
       for (const el of handleEls) el.hidden = true
     }
 
+    const edgeEls = engine.doc.edges.flatMap((e) => {
+      const d = edgePathD(engine, e)
+      if (!d) return []
+      const p = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+      p.setAttribute('class', engine.selectedIds.has(e.id) ? 'ki-edge ki-sel' : 'ki-edge')
+      p.setAttribute('d', d)
+      return [p]
+    })
+    const preview = engine.connectPreview()
+    if (preview) {
+      const p = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+      p.setAttribute('class', 'ki-edge-preview')
+      p.setAttribute('d', routePathD(engine, preview.from, preview.to, 'straight'))
+      edgeEls.push(p)
+    }
+    edgeSvg.replaceChildren(...edgeEls)
+
+    portLayer.replaceChildren(
+      ...engine.doc.objects.flatMap((o) =>
+        portPoints(engine, o).map(({ port, x, y }) => {
+          const el = document.createElement('div')
+          el.className = 'ki-port'
+          el.dataset.kiObj = o.id
+          el.dataset.kiPort = port.id
+          el.style.transform = `translate(${x}px, ${y}px)`
+          return el
+        }),
+      ),
+    )
+
     guideLayer.replaceChildren(
       ...engine.guides.map((g) => {
         const el = document.createElement('div')
@@ -122,6 +168,8 @@ export function createRenderer(container: HTMLElement, opts: RendererOptions): R
       for (const el of handleEls) el.remove()
       marqueeEl.remove()
       guideLayer.remove()
+      portLayer.remove()
+      edgeSvg.remove()
       container.classList.remove('ki-canvas')
     },
   }

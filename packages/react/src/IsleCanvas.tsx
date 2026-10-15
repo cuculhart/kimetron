@@ -74,7 +74,11 @@ export function IsleCanvas({
           <div
             key={o.id}
             className={engine.selectedIds.has(o.id) ? 'ki-obj ki-sel' : 'ki-obj'}
-            style={{ left: f.left, top: f.top, width: f.width, height: f.height }}
+            style={{
+              transform: `translate(${f.left}px, ${f.top}px)`,
+              width: f.width,
+              height: f.height,
+            }}
           >
             {renderObject ? renderObject(o) : o.id}
           </div>
@@ -84,8 +88,7 @@ export function IsleCanvas({
         <div
           className="ki-marquee"
           style={{
-            left: marquee.left,
-            top: marquee.top,
+            transform: `translate(${marquee.left}px, ${marquee.top}px)`,
             width: marquee.width,
             height: marquee.height,
           }}

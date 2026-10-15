@@ -41,8 +41,7 @@ export function createRenderer(container: HTMLElement, opts: RendererOptions): R
         objEls.set(o.id, el)
       }
       const f = objectFrame(engine, o)
-      el.style.left = `${f.left}px`
-      el.style.top = `${f.top}px`
+      el.style.transform = `translate(${f.left}px, ${f.top}px)`
       el.style.width = `${f.width}px`
       el.style.height = `${f.height}px`
       el.classList.toggle('ki-sel', engine.selectedIds.has(o.id))
@@ -57,8 +56,7 @@ export function createRenderer(container: HTMLElement, opts: RendererOptions): R
     const mf = marqueeFrame(engine)
     if (mf) {
       marqueeEl.style.display = ''
-      marqueeEl.style.left = `${mf.left}px`
-      marqueeEl.style.top = `${mf.top}px`
+      marqueeEl.style.transform = `translate(${mf.left}px, ${mf.top}px)`
       marqueeEl.style.width = `${mf.width}px`
       marqueeEl.style.height = `${mf.height}px`
     } else {

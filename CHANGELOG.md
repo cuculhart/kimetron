@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-15
+
 ### Added
 
 - Initial monorepo scaffold: `@kimetron/core`, `@kimetron/dom`,
@@ -22,4 +24,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   style injection, vanilla `createRenderer`
 - `@kimetron/react`: `IsleCanvas`, `useEngine`, `useEngineVersion`
 - `drivers/demo` playground: units/origin/grid/snap switching, add/delete,
-  JSON save/load, scale + cursor readout
+  JSON save/load, scale + cursor readout, no-React `vanilla.html` page

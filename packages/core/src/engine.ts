@@ -41,6 +41,7 @@ export class Engine {
   private startWorld: Pt = { x: 0, y: 0 }
   private vpStart: Viewport | null = null
   private dragIds: string[] = []
+  private dragAnchor: Pt = { x: 0, y: 0 }
   private listeners = new Set<EngineListener>()
   private docListeners = new Set<(doc: Doc) => void>()
   private selectionListeners = new Set<(ids: ReadonlySet<string>) => void>()
@@ -191,6 +192,7 @@ export class Engine {
       }
       if (!this.selectedIds.has(hit.id)) this.setSelection([hit.id])
       this.dragIds = [...this.selectedIds]
+      this.dragAnchor = { x: hit.x, y: hit.y }
       this.mode = 'drag'
       return
     }
@@ -208,12 +210,13 @@ export class Engine {
     if (this.mode === 'drag') {
       const g = this.doc.grid
       const raw = { x: w.x - this.startWorld.x, y: w.y - this.startWorld.y }
-      this.dragDelta = g.snap
-        ? {
-            x: Math.round(raw.x / g.size) * g.size,
-            y: Math.round(raw.y / g.size) * g.size,
-          }
-        : raw
+      this.dragDelta =
+        g.snap && g.size > 0
+          ? {
+              x: Math.round((this.dragAnchor.x + raw.x) / g.size) * g.size - this.dragAnchor.x,
+              y: Math.round((this.dragAnchor.y + raw.y) / g.size) * g.size - this.dragAnchor.y,
+            }
+          : raw
       this.emit()
       return
     }

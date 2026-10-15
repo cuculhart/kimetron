@@ -90,6 +90,20 @@ describe('engine drag', () => {
     expect(e.dragDelta).toBeNull()
   })
 
+  it('snaps the dragged object onto grid lines, not just the delta', () => {
+    const off = { id: 'off', kind: 'rect', x: 23, y: 17, w: 40, h: 30 }
+    const e = new Engine(
+      { units: 'mm', origin: 'bottom-left', grid: { size: 10, snap: true } },
+      [off],
+    )
+    e.viewport = { x: 0, y: 500, zoom: 1 }
+    e.pointerDown(e.worldToScreen({ x: off.x + 1, y: off.y + 1 }))
+    e.pointerMove(e.worldToScreen({ x: off.x + 3, y: off.y + 1 }))
+    e.pointerUp()
+    expect(e.doc.objects[0].x % 10).toBe(0)
+    expect(e.doc.objects[0].y % 10).toBe(0)
+  })
+
   it('does not mutate doc on click without move', () => {
     const e = make()
     const s0 = e.worldToScreen({ x: 21, y: 21 })

@@ -36,8 +36,8 @@ export function App() {
     engine.addObject({
       id: nextId(),
       kind: 'rect',
-      x: Math.round(Math.random() * 20) * s * 0.2 + s,
-      y: Math.round(Math.random() * 15) * s * 0.2 + s,
+      x: (1 + Math.floor(Math.random() * 15)) * s,
+      y: (1 + Math.floor(Math.random() * 10)) * s,
       w: s * 4,
       h: s * 3,
     })

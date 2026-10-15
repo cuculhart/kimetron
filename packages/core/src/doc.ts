@@ -34,6 +34,50 @@ export function removeObjects(doc: Doc, ids: Iterable<string>): Doc {
   return { ...doc, objects: doc.objects.filter((o) => !set.has(o.id)) }
 }
 
+export type ZOrder = 'front' | 'back' | 'forward' | 'backward'
+
+/** Reorder `objects` array (render order = array order; last = topmost). */
+export function reorderObjects(
+  doc: Doc,
+  ids: Iterable<string>,
+  op: ZOrder,
+): Doc {
+  const set = new Set(ids)
+  if (set.size === 0) return doc
+  const objs = [...doc.objects]
+  const sel = objs.filter((o) => set.has(o.id))
+  const rest = objs.filter((o) => !set.has(o.id))
+  if (op === 'front') return { ...doc, objects: [...rest, ...sel] }
+  if (op === 'back') return { ...doc, objects: [...sel, ...rest] }
+  const indices = objs.map((o, i) => (set.has(o.id) ? i : -1)).filter((i) => i >= 0)
+  if (op === 'forward') {
+    for (let k = indices.length - 1; k >= 0; k--) {
+      const i = indices[k]
+      if (i + 1 >= objs.length || set.has(objs[i + 1].id)) continue
+      ;[objs[i], objs[i + 1]] = [objs[i + 1], objs[i]]
+    }
+  } else {
+    for (const i of indices) {
+      if (i === 0 || set.has(objs[i - 1].id)) continue
+      ;[objs[i], objs[i - 1]] = [objs[i - 1], objs[i]]
+    }
+  }
+  return { ...doc, objects: objs }
+}
+
+export function resizeObject(
+  doc: Doc,
+  id: string,
+  r: { x: number; y: number; w: number; h: number },
+): Doc {
+  return {
+    ...doc,
+    objects: doc.objects.map((o) =>
+      o.id === id ? { ...o, x: r.x, y: r.y, w: r.w, h: r.h } : o,
+    ),
+  }
+}
+
 export function serializeDoc(doc: Doc): string {
   return JSON.stringify(doc, null, 2)
 }

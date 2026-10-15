@@ -1,6 +1,6 @@
 import type { Engine, WorldObject } from '@kimetron/core'
 import { attachInput } from './input'
-import { injectStyles, marqueeFrame, objectFrame } from './style'
+import { handlePoints, injectStyles, marqueeFrame, objectFrame } from './style'
 
 export interface RendererOptions {
   engine: Engine
@@ -23,7 +23,20 @@ export function createRenderer(container: HTMLElement, opts: RendererOptions): R
   marqueeEl.style.display = 'none'
   container.appendChild(marqueeEl)
 
+  const guideLayer = document.createElement('div')
+  guideLayer.className = 'ki-guides'
+  container.appendChild(guideLayer)
+
   const objEls = new Map<string, HTMLElement>()
+
+  const handleEls = handlePoints({ left: 0, top: 0, width: 0, height: 0 }).map((h) => {
+    const el = document.createElement('div')
+    el.className = 'ki-handle'
+    el.dataset.kiHandle = h.dir
+    el.hidden = true
+    container.appendChild(el)
+    return el
+  })
 
   function render(): void {
     const seen = new Set<string>()
@@ -53,6 +66,38 @@ export function createRenderer(container: HTMLElement, opts: RendererOptions): R
       }
     }
 
+    const selObj =
+      engine.selectedIds.size === 1
+        ? engine.doc.objects.find((o) => engine.selectedIds.has(o.id))
+        : undefined
+    if (selObj) {
+      const pts = handlePoints(objectFrame(engine, selObj))
+      for (const el of handleEls) {
+        const p = pts.find((p) => p.dir === el.dataset.kiHandle)
+        if (!p) continue
+        el.hidden = false
+        el.dataset.kiObj = selObj.id
+        el.style.transform = `translate(${p.x}px, ${p.y}px)`
+        el.style.cursor = p.cursor
+      }
+    } else {
+      for (const el of handleEls) el.hidden = true
+    }
+
+    guideLayer.replaceChildren(
+      ...engine.guides.map((g) => {
+        const el = document.createElement('div')
+        if (g.axis === 'x') {
+          el.className = 'ki-guide ki-guide-v'
+          el.style.left = `${engine.worldToScreen({ x: g.at, y: 0 }).x}px`
+        } else {
+          el.className = 'ki-guide ki-guide-h'
+          el.style.top = `${engine.worldToScreen({ x: 0, y: g.at }).y}px`
+        }
+        return el
+      }),
+    )
+
     const mf = marqueeFrame(engine)
     if (mf) {
       marqueeEl.style.display = ''
@@ -74,7 +119,9 @@ export function createRenderer(container: HTMLElement, opts: RendererOptions): R
       detach()
       for (const el of objEls.values()) el.remove()
       objEls.clear()
+      for (const el of handleEls) el.remove()
       marqueeEl.remove()
+      guideLayer.remove()
       container.classList.remove('ki-canvas')
     },
   }

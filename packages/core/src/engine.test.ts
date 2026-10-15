@@ -145,6 +145,154 @@ describe('engine drag', () => {
   })
 })
 
+describe('engine resize', () => {
+  const obj = { id: 'a', kind: 'rect', x: 20, y: 20, w: 40, h: 30 }
+
+  function make(cfg = {}) {
+    const e = new Engine({ units: 'mm', origin: 'bottom-left', grid: { size: 10, snap: true }, ...cfg }, [obj])
+    e.viewport = { x: 0, y: 500, zoom: 1 }
+    return e
+  }
+
+  it('commits the new rect only on pointerUp, snapping the moving edges', () => {
+    const e = make()
+    let emitted = 0
+    e.onDocChange(() => emitted++)
+    // move the max-x / max-y edges (screen 'se' under bottom-left is {x:+1,y:-1}... here use {x:1,y:1} = grow toward +x,+y)
+    e.startResize({ x: 0, y: 0 }, 'a', { x: 1, y: 1 })
+    e.pointerMove(e.worldToScreen({ x: 97, y: 83 }))
+    // preview only; edges snapped to 100/80 → rect stays anchored at orig min corner
+    expect(e.resize?.rect).toEqual({ x: 20, y: 20, w: 80, h: 60 })
+    expect(e.doc.objects[0].w).toBe(40)
+    expect(emitted).toBe(0)
+
+    e.pointerUp()
+    expect(e.doc.objects[0]).toMatchObject({ x: 20, y: 20, w: 80, h: 60 })
+    expect(emitted).toBe(1)
+    expect(e.resize).toBeNull()
+  })
+
+  it('keeps the opposite corner fixed when dragging a min edge', () => {
+    const e = make()
+    e.startResize({ x: 0, y: 0 }, 'a', { x: -1, y: -1 }) // move min-x/min-y edges
+    e.pointerMove(e.worldToScreen({ x: 5, y: 8 }))
+    e.pointerUp()
+    // snapped min corner lands at (10,10); max corner (60,50) stays fixed
+    expect(e.doc.objects[0]).toMatchObject({ x: 10, y: 10, w: 50, h: 40 })
+  })
+
+  it('does not commit on a click without move', () => {
+    const e = make()
+    let emitted = 0
+    e.onDocChange(() => emitted++)
+    e.startResize({ x: 0, y: 0 }, 'a', { x: 1, y: 1 })
+    e.pointerUp()
+    expect(e.doc.objects[0]).toMatchObject({ x: 20, y: 20, w: 40, h: 30 })
+    expect(emitted).toBe(0)
+  })
+})
+
+describe('object snapping', () => {
+  const cfg = { units: 'mm' as const, origin: 'bottom-left' as const, grid: { size: 10, snap: true } }
+
+  it('snaps dragged edge to a neighbor edge in preference to the grid', () => {
+    const e = new Engine(cfg, [
+      { id: 'a', kind: 'rect', x: 20, y: 20, w: 40, h: 30 },
+      { id: 'b', kind: 'rect', x: 90, y: 0, w: 30, h: 30 },
+    ])
+    e.viewport = { x: 0, y: 500, zoom: 1 }
+    // grab 'a', drag so its max-x edge lands just short of b's min-x (90)
+    e.pointerDown(e.worldToScreen({ x: 21, y: 21 }))
+    e.pointerMove(e.worldToScreen({ x: 21 + 28, y: 21 })) // anchor lands x=48 → edges 48/68/88
+    // nearest within tol: 88→90 (adj +2) wins over grid
+    expect(e.dragDelta?.x).toBeCloseTo(30)
+    expect(e.dragDelta?.y).toBeCloseTo(0)
+    expect(e.guides).toEqual([{ axis: 'x', at: 90 }])
+    e.pointerUp()
+    expect(e.doc.objects[0].x).toBeCloseTo(50)
+    expect(e.guides).toEqual([])
+  })
+
+  it('snaps the resize pointer to a neighbor edge', () => {
+    const e = new Engine(cfg, [
+      { id: 'a', kind: 'rect', x: 20, y: 20, w: 40, h: 30 },
+      { id: 'b', kind: 'rect', x: 95, y: 0, w: 30, h: 30 },
+    ])
+    e.viewport = { x: 0, y: 500, zoom: 1 }
+    e.startResize({ x: 0, y: 0 }, 'a', { x: 1, y: 0 })
+    e.pointerMove(e.worldToScreen({ x: 94, y: 20 }))
+    expect(e.resize?.rect.w).toBe(75) // snapped to x=95: 95-20
+    e.pointerUp()
+    expect(e.doc.objects[0].w).toBe(75)
+  })
+})
+
+describe('history / z-order / duplicate', () => {
+  const obj = { id: 'a', kind: 'rect', x: 0, y: 0, w: 10, h: 10 }
+
+  it('undo/redo restores committed docs', () => {
+    const e = new Engine({}, [{ ...obj }])
+    e.viewport = { x: 0, y: 0, zoom: 1 }
+    expect(e.canUndo).toBe(false)
+    e.moveSelectedBy(0, 0) // no selection — but direct doc ops:
+    e.addObject({ id: 'b', kind: 'rect', x: 5, y: 5, w: 10, h: 10 })
+    expect(e.doc.objects).toHaveLength(2)
+    expect(e.canUndo).toBe(true)
+    e.undo()
+    expect(e.doc.objects).toHaveLength(1)
+    expect(e.canRedo).toBe(true)
+    e.redo()
+    expect(e.doc.objects).toHaveLength(2)
+  })
+
+  it('reorders objects front/back', () => {
+    const e = new Engine({}, [
+      { ...obj },
+      { id: 'b', kind: 'rect', x: 0, y: 0, w: 10, h: 10 },
+      { id: 'c', kind: 'rect', x: 0, y: 0, w: 10, h: 10 },
+    ])
+    e.setSelection(['a'])
+    e.reorderSelected('front')
+    expect(e.doc.objects.map((o) => o.id)).toEqual(['b', 'c', 'a'])
+    e.reorderSelected('back')
+    expect(e.doc.objects.map((o) => o.id)).toEqual(['a', 'b', 'c'])
+    e.reorderSelected('forward')
+    expect(e.doc.objects.map((o) => o.id)).toEqual(['b', 'a', 'c'])
+  })
+
+  it('duplicates selection with fresh ids and selects the copies', () => {
+    const e = new Engine({ grid: { size: 10, snap: true } }, [{ ...obj }])
+    e.setSelection(['a'])
+    e.duplicateSelected()
+    expect(e.doc.objects).toHaveLength(2)
+    const copy = e.doc.objects[1]
+    expect(copy.id).toBe('a-copy')
+    expect(copy.x).toBe(10)
+    expect(e.selectedIds.has('a-copy')).toBe(true)
+    e.duplicateSelected()
+    expect(e.doc.objects[2].id).toBe('a-copy-copy')
+  })
+})
+
+describe('history edge cases', () => {
+  it('setDoc (load) is one undoable commit', () => {
+    const e = new Engine({}, [{ id: 'a', kind: 'rect', x: 0, y: 0, w: 10, h: 10 }])
+    const loaded = deserializeDoc(serializeDoc({ ...createDocument(), objects: [{ id: 'z', kind: 'rect', x: 1, y: 2, w: 3, h: 4 }] }))
+    e.setDoc(loaded)
+    expect(e.doc.objects[0].id).toBe('z')
+    e.undo()
+    expect(e.doc.objects[0].id).toBe('a')
+  })
+
+  it('a new commit clears the redo stack', () => {
+    const e = new Engine({}, [{ id: 'a', kind: 'rect', x: 0, y: 0, w: 10, h: 10 }])
+    e.addObject({ id: 'b', kind: 'rect', x: 1, y: 1, w: 5, h: 5 })
+    e.undo()
+    e.addObject({ id: 'c', kind: 'rect', x: 2, y: 2, w: 5, h: 5 })
+    expect(e.canRedo).toBe(false)
+  })
+})
+
 describe('doc serialize', () => {
   it('roundtrips units/origin/grid/objects', () => {
     const doc = createDocument({ units: 'inch', origin: 'top-left', grid: { size: 0.5, snap: false } })

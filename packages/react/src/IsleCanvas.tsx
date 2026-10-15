@@ -2,7 +2,7 @@ import { useEffect, useRef, useSyncExternalStore } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { Engine } from '@kimetron/core'
 import type { Doc, WorldConfig, WorldObject } from '@kimetron/core'
-import { attachInput, gridBackground, injectStyles, marqueeFrame, objectFrame } from '@kimetron/dom'
+import { attachInput, gridBackground, handlePoints, injectStyles, marqueeFrame, objectFrame } from '@kimetron/dom'
 
 export function useEngine(cfg?: WorldConfig): Engine {
   const ref = useRef<Engine | null>(null)
@@ -61,6 +61,11 @@ export function IsleCanvas({
   }, [autoOrigin, origin, engine])
 
   const marquee = marqueeFrame(engine)
+  const selObj =
+    engine.selectedIds.size === 1
+      ? engine.doc.objects.find((o) => engine.selectedIds.has(o.id))
+      : undefined
+  const handles = selObj ? handlePoints(objectFrame(engine, selObj)) : []
 
   return (
     <div
@@ -84,6 +89,25 @@ export function IsleCanvas({
           </div>
         )
       })}
+      {engine.guides.map((g, i) => {
+        const pos = engine.worldToScreen({ x: g.at, y: g.at })
+        return (
+          <div
+            key={i}
+            className={g.axis === 'x' ? 'ki-guide ki-guide-v' : 'ki-guide ki-guide-h'}
+            style={g.axis === 'x' ? { left: pos.x } : { top: pos.y }}
+          />
+        )
+      })}
+      {handles.map((h) => (
+        <div
+          key={h.dir}
+          className="ki-handle"
+          data-ki-handle={h.dir}
+          data-ki-obj={selObj?.id}
+          style={{ transform: `translate(${h.x}px, ${h.y}px)`, cursor: h.cursor }}
+        />
+      ))}
       {marquee && (
         <div
           className="ki-marquee"

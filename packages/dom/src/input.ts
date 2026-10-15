@@ -1,4 +1,5 @@
 import type { Engine, Pt } from '@kimetron/core'
+import { screenDirToWorld } from './style'
 
 export function attachInput(el: HTMLElement, engine: Engine): () => void {
   const toLocal = (e: { clientX: number; clientY: number }): Pt => {
@@ -7,8 +8,22 @@ export function attachInput(el: HTMLElement, engine: Engine): () => void {
   }
 
   const down = (e: PointerEvent) => {
+    const handle = (e.target as HTMLElement).closest?.(
+      '[data-ki-handle]',
+    ) as HTMLElement | null
+    if (handle?.dataset.kiObj) {
+      engine.startResize(
+        toLocal(e),
+        handle.dataset.kiObj,
+        screenDirToWorld(handle.dataset.kiHandle ?? '', engine.doc.origin),
+      )
+    } else {
+      engine.pointerDown(toLocal(e), {
+        button: e.button,
+        additive: e.shiftKey,
+      })
+    }
     el.setPointerCapture(e.pointerId)
-    engine.pointerDown(toLocal(e), { button: e.button, additive: e.shiftKey })
     e.preventDefault()
   }
   const move = (e: PointerEvent) => engine.pointerMove(toLocal(e))
@@ -18,7 +33,17 @@ export function attachInput(el: HTMLElement, engine: Engine): () => void {
   }
   const wheel = (e: WheelEvent) => {
     e.preventDefault()
-    engine.wheel(toLocal(e), e.deltaY)
+    if (e.ctrlKey || e.metaKey) {
+      // trackpad pinch (or Ctrl+wheel): zoom
+      engine.wheel(toLocal(e), e.deltaY)
+    } else if (e.deltaX !== 0 || e.shiftKey) {
+      // trackpad two-finger scroll or Shift+wheel: pan
+      const dx = e.deltaX + (e.shiftKey ? e.deltaY : 0)
+      const dy = e.shiftKey ? 0 : e.deltaY
+      engine.panBy(dx, dy)
+    } else {
+      engine.wheel(toLocal(e), e.deltaY)
+    }
   }
 
   el.addEventListener('pointerdown', down)

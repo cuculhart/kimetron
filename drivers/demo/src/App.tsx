@@ -62,8 +62,21 @@ export function App() {
     file.text().then((t) => engine.setDoc(deserializeDoc(t)))
   }
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const mod = e.ctrlKey || e.metaKey
+      if (e.key === 'Delete' || e.key === 'Backspace') engine.removeSelected()
+      else if (mod && e.key.toLowerCase() === 'z' && e.shiftKey) { e.preventDefault(); engine.redo() }
+      else if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); engine.undo() }
+      else if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); engine.redo() }
+      else if (mod && e.key.toLowerCase() === 'd') { e.preventDefault(); engine.duplicateSelected() }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [engine])
+
   return (
-    <div className="app" onKeyDown={(e) => e.key === 'Delete' && engine.removeSelected()} tabIndex={0}>
+    <div className="app">
       <header className="bar">
         <strong>Kimetron Isle</strong>
         <label>
@@ -102,9 +115,26 @@ export function App() {
         </label>
         <span className="sep" />
         <button onClick={addRect}>+ rect</button>
+        <button onClick={() => engine.duplicateSelected()} disabled={engine.selectedIds.size === 0}>
+          duplicate
+        </button>
+        <button onClick={() => engine.reorderSelected('front')} disabled={engine.selectedIds.size === 0}>
+          front
+        </button>
+        <button onClick={() => engine.reorderSelected('back')} disabled={engine.selectedIds.size === 0}>
+          back
+        </button>
         <button onClick={() => engine.removeSelected()} disabled={engine.selectedIds.size === 0}>
           delete
         </button>
+        <span className="sep" />
+        <button onClick={() => engine.undo()} disabled={!engine.canUndo}>
+          undo
+        </button>
+        <button onClick={() => engine.redo()} disabled={!engine.canRedo}>
+          redo
+        </button>
+        <span className="sep" />
         <button onClick={save}>save JSON</button>
         <button onClick={() => fileRef.current?.click()}>load JSON</button>
         <input
@@ -139,7 +169,7 @@ export function App() {
         </span>
         <span>selected {engine.selectedIds.size}</span>
         <span className="sep" />
-        <span className="hint">drag object: move / drag empty: marquee / shift+click: multi / mid-drag: pan / wheel: zoom</span>
+        <span className="hint">drag: move / handle: resize / empty-drag: marquee / ctrl+z: undo / ctrl+d: duplicate / mid-drag: pan / wheel: zoom / trackpad: pan·pinch</span>
       </footer>
     </div>
   )

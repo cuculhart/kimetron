@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `@kimetron/core`: resize gesture — 8 screen-space handles on a single
+  selection, fixed opposite corner/edge, commit on pointerUp
+  (`engine.startResize`, `resizeObject`)
+- `@kimetron/core`: object snapping — moving edges/centers snap to other
+  objects' edges/centers during drag and resize, prioritized over grid snap,
+  with visible alignment guides (`engine.guides`)
+- `@kimetron/core`: undo/redo via document snapshots
+  (`undo`/`redo`/`canUndo`/`canRedo`, commit-only history, cap 100)
+- `@kimetron/core`: z-order ops (`reorderSelected` — front/back/forward/
+  backward) and `duplicateSelected` (grid-step offset copy, fresh ids)
+- `@kimetron/core`: `panBy(dx, dy)` viewport pan
+- `@kimetron/dom`: resize handles (`data-ki-handle`), guide layer,
+  `.ki-handle`/`.ki-guide` styles; wheel routing — trackpad scroll pans,
+  Ctrl/pinch zooms, plain wheel still zooms
+- `drivers/demo`: undo/redo/duplicate/front/back buttons and keyboard
+  shortcuts (Ctrl+Z/Y, Ctrl+D)
+
 ## [0.1.0] - 2026-10-15
 
 ### Added

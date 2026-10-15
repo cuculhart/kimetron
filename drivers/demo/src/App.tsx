@@ -7,8 +7,14 @@ import './styles.css'
 const UNITS: Unit[] = ['mm', 'cm', 'm', 'inch', 'px']
 const ORIGINS: Origin[] = ['bottom-left', 'top-left']
 
-let counter = 0
-const nextId = () => `r${++counter}`
+function nextId(objects: { id: string }[]): string {
+  let max = 0
+  for (const o of objects) {
+    const m = /^r(\d+)$/.exec(o.id)
+    if (m) max = Math.max(max, Number(m[1]))
+  }
+  return `r${max + 1}`
+}
 
 export function App() {
   const engine = useEngine({
@@ -34,7 +40,7 @@ export function App() {
   const addRect = () => {
     const s = doc.grid.size
     engine.addObject({
-      id: nextId(),
+      id: nextId(doc.objects),
       kind: 'rect',
       x: (1 + Math.floor(Math.random() * 15)) * s,
       y: (1 + Math.floor(Math.random() * 10)) * s,

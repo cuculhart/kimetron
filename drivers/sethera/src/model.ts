@@ -61,8 +61,9 @@ function piece(
       fill: PIECE_FILL,
       ...(locked ? { stroke: LOCK_STROKE } : {}),
     },
+    ...(locked ? { locked: true } : {}),
     ...fields,
-    data: { label, value, locked },
+    data: { label, value },
   }
 }
 

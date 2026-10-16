@@ -1,11 +1,20 @@
 import type { Edge, EdgeMarker, EdgeRoute, Engine, Origin, Port, Pt, ResizeDir, WorldObject } from '@kimetron/core'
-import { arcAngles, arcPoint, edgeEndpoints, edgeGeom, formatLength, shapeAnchors, unitToPx } from '@kimetron/core'
+import { arcAngles, arcPoint, edgeEndpoints, edgeGeom, formatLength, objPoint, shapeAnchors, unitToPx } from '@kimetron/core'
 
 export interface Frame {
   left: number
   top: number
   width: number
   height: number
+  /** CSS `rotate()` degrees to append after translate (screen space —
+      already origin-adjusted). 0 or undefined = no rotation. */
+  rot?: number
+}
+
+/** Convert a world-space rotation to CSS screen degrees.
+    Under a bottom-left origin the y-flip reverses the sense. */
+export function screenRotDeg(engine: Engine, deg: number): number {
+  return engine.doc.origin === 'top-left' ? deg : -deg
 }
 
 const GRID_LINE = 'var(--ki-grid, rgba(40, 60, 80, 0.10))'
@@ -40,17 +49,25 @@ export function gridBackground(engine: Engine): {
   }
 }
 
-export function objectFrame(engine: Engine, o: { x: number; y: number; w: number; h: number; id: string }): Frame {
+export function objectFrame(engine: Engine, o: { x: number; y: number; w: number; h: number; id: string; rot?: number }): Frame {
   const { doc, viewport: vp } = engine
   const rr = engine.resize && engine.resize.id === o.id ? { ...o, ...engine.resize.rect } : o
   const d = engine.dragDelta && engine.selectedIds.has(o.id) ? engine.dragDelta : { x: 0, y: 0 }
+  const deg =
+    engine.rotate && engine.rotate.id === o.id ? engine.rotate.deg : (o.rot ?? 0)
   const u = unitToPx(doc.units) * vp.zoom
   const corner = {
     x: rr.x + d.x,
     y: doc.origin === 'top-left' ? rr.y + d.y : rr.y + d.y + rr.h,
   }
   const s = engine.worldToScreen(corner)
-  return { left: s.x, top: s.y, width: rr.w * u, height: rr.h * u }
+  return {
+    left: s.x,
+    top: s.y,
+    width: rr.w * u,
+    height: rr.h * u,
+    rot: deg ? screenRotDeg(engine, deg) : 0,
+  }
 }
 
 /** Screen-space frame of the document page rect, or null when unset. */
@@ -115,6 +132,60 @@ export function handlePoints(f: Frame): HandlePoint[] {
   return dirs.map(([dir, x, y]) => ({ dir, x, y, cursor: HANDLE_CURSORS[dir] }))
 }
 
+/** The 8 resize cursors indexed clockwise from screen-east (0°). */
+const CURSOR_BY_ANGLE = [
+  'ew-resize',
+  'nwse-resize',
+  'ns-resize',
+  'nesw-resize',
+  'ew-resize',
+  'nwse-resize',
+  'ns-resize',
+  'nesw-resize',
+] as const
+
+function cursorForAngle(dx: number, dy: number): string {
+  const deg = (Math.atan2(dy, dx) * 180) / Math.PI
+  const i = ((Math.round(deg / 45) % 8) + 8) % 8
+  return CURSOR_BY_ANGLE[i]
+}
+
+/** Rotate a screen point around `c` by CSS degrees (clockwise, y down). */
+function rotScreen(p: Pt, c: Pt, cssDeg: number): Pt {
+  if (!cssDeg) return p
+  const a = (cssDeg * Math.PI) / 180
+  const cos = Math.cos(a)
+  const sin = Math.sin(a)
+  const dx = p.x - c.x
+  const dy = p.y - c.y
+  return { x: c.x + dx * cos - dy * sin, y: c.y + dx * sin + dy * cos }
+}
+
+/** Handle anchors for `o`, riding the object's rotation. Dirs still
+    name the object's local edges — `screenDirToWorld` applies as-is. */
+export function handlePointsFor(engine: Engine, o: WorldObject): HandlePoint[] {
+  const f = objectFrame(engine, o)
+  const c = { x: f.left + f.width / 2, y: f.top + f.height / 2 }
+  return handlePoints(f).map((h) => {
+    const p = rotScreen({ x: h.x, y: h.y }, c, f.rot ?? 0)
+    return { dir: h.dir, x: p.x, y: p.y, cursor: cursorForAngle(p.x - c.x, p.y - c.y) }
+  })
+}
+
+/** Screen-space anchor for the rotate handle — the top edge midpoint
+    pushed outward along the object's normal. */
+export function rotateHandlePoint(engine: Engine, o: WorldObject, gapPx = 20): Pt | null {
+  if (o.locked) return null
+  const f = objectFrame(engine, o)
+  const c = { x: f.left + f.width / 2, y: f.top + f.height / 2 }
+  const top = { x: c.x, y: f.top }
+  const p = rotScreen(top, c, f.rot ?? 0)
+  const dx = p.x - c.x
+  const dy = p.y - c.y
+  const len = Math.hypot(dx, dy) || 1
+  return { x: p.x + (dx / len) * gapPx, y: p.y + (dy / len) * gapPx }
+}
+
 /**
  * Map a screen-space handle direction to the world-space edges it moves.
  * X is origin-independent; Y flips because 'n' (top of screen) is the
@@ -129,13 +200,13 @@ export function screenDirToWorld(dir: string, origin: Origin): ResizeDir {
 
 // --- ports & edges ---
 
-/** Screen-space positions of an object's ports. */
+/** Screen-space positions of an object's ports (rotated when the object is). */
 export function portPoints(
   engine: Engine,
-  o: { id: string; x: number; y: number; w: number; h: number; ports?: Port[] },
+  o: { id: string; x: number; y: number; w: number; h: number; rot?: number; ports?: Port[] },
 ): { port: Port; x: number; y: number }[] {
   return (o.ports ?? []).map((p) => {
-    const s = engine.worldToScreen({ x: o.x + p.fx * o.w, y: o.y + p.fy * o.h })
+    const s = engine.worldToScreen(objPoint(o, p.fx, p.fy))
     return { port: p, x: s.x, y: s.y }
   })
 }
@@ -378,9 +449,12 @@ export function rulerTicks(engine: Engine, axis: 'x' | 'y', spanPx: number): Rul
   return ticks
 }
 
-/** Drag/resize HUD readout (world units), or null when idle. */
+/** Drag/resize/rotate HUD readout (world units), or null when idle. */
 export function hudText(engine: Engine): string | null {
   const u = engine.doc.units
+  if (engine.rotate) {
+    return `${engine.rotate.deg.toFixed(1)}°`
+  }
   if (engine.resize) {
     const r = engine.resize.rect
     return `${formatLength(r.w, u)} × ${formatLength(r.h, u)} @ ${formatLength(r.x, u)}, ${formatLength(r.y, u)}`
@@ -438,6 +512,8 @@ export function injectStyles(): void {
 .ki-marquee { position: absolute; left: 0; top: 0; border: 1px dashed var(--ki-sel, #3a7bd5); background: rgba(58, 123, 213, 0.08); pointer-events: none; }
 .ki-handle { position: absolute; width: 8px; height: 8px; margin: -4px 0 0 -4px; background: #fff; border: 1px solid var(--ki-sel, #3a7bd5); box-sizing: border-box; z-index: 10; }
 .ki-handle[hidden] { display: none; }
+.ki-rot { position: absolute; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; background: #fff; border: 1.5px solid var(--ki-sel, #3a7bd5); box-sizing: border-box; z-index: 10; cursor: grab; }
+.ki-rot[hidden] { display: none; }
 .ki-guides { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 .ki-guide { position: absolute; background: var(--ki-guide, #e0393e); }
 .ki-guide-v { top: 0; bottom: 0; width: 1px; }

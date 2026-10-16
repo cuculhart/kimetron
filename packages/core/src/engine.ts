@@ -10,13 +10,19 @@ import {
   reorderObjects,
   renderOrder,
   resizeObject,
+  rotateObject,
   type ZOrder,
 } from './doc'
 import { distToGeom, edgeGeom } from './edge'
 import {
+  aabbOf,
+  invRotPt,
+  objCenter,
+  objPoint,
+  obbOf,
+  polysIntersect,
   rectBetween,
-  rectOf,
-  rectsIntersect,
+  rectPoly,
   screenToWorld,
   worldToScreen,
 } from './geometry'
@@ -24,7 +30,7 @@ import { hitObject, shapeSnapPoints } from './shape'
 import type { Doc, Edge, EdgeEndpoint, EdgeRoute, GridConfig, Origin, Pt, Rect, Unit, Viewport, WorldConfig, WorldObject } from './types'
 import { formatScale, unitToPx } from './units'
 
-type Mode = 'idle' | 'drag' | 'marquee' | 'pan' | 'resize' | 'connect'
+type Mode = 'idle' | 'drag' | 'marquee' | 'pan' | 'resize' | 'connect' | 'rotate'
 
 export interface PointerOpts {
   button?: number
@@ -86,6 +92,11 @@ export class Engine {
   dragInvalid = false
   /** Extra snap candidates injected by the app (page frames, guides). */
   snapExtra: { xs: number[]; ys: number[] } = { xs: [], ys: [] }
+  /** In-progress rotate gesture preview: target id and live angle (deg). */
+  rotate: { id: string; deg: number } | null = null
+  /** Angle snap for the rotate gesture while `pointerMove`'s
+      `angleSnap` opt is held (deg; 0 disables snapping). */
+  rotateSnapDeg = 15
   marquee: Rect | null = null
   cursorWorld: Pt = { x: 0, y: 0 }
   version = 0
@@ -100,6 +111,12 @@ export class Engine {
   private resizeId: string | null = null
   private resizeDir: ResizeDir = { x: 0, y: 0 }
   private resizeOrig: Rect | null = null
+  private resizeCenter: Pt = { x: 0, y: 0 }
+  private resizeRot = 0
+  private rotateId: string | null = null
+  private rotateOrig = 0
+  private rotateCenter: Pt = { x: 0, y: 0 }
+  private rotateStartAng = 0
   private listeners = new Set<EngineListener>()
   private docListeners = new Set<(doc: Doc) => void>()
   private selectionListeners = new Set<(ids: ReadonlySet<string>) => void>()
@@ -346,17 +363,28 @@ export class Engine {
     return null
   }
 
-  /** Solid objects intersecting `rect` — edge-touching is not an overlap. */
+  /** Solid objects whose footprint intersects `rect` — edge-touching
+      is not an overlap. Rotated objects use their OBB. */
   collisions(rect: Rect, exclude?: ReadonlySet<string>): WorldObject[] {
+    const poly = rectPoly(rect)
     return this.doc.objects.filter(
-      (o) => o.solid === true && !exclude?.has(o.id) && rectsIntersect(rect, rectOf(o)),
+      (o) =>
+        o.solid === true && !exclude?.has(o.id) && polysIntersect(poly, obbOf(o)),
     )
   }
 
-  /** Would `mover` at `rect` illegally overlap a non-excluded solid? */
-  private blockedBySolid(mover: WorldObject, rect: Rect, exclude: ReadonlySet<string>): boolean {
+  /** Would `mover` (at the position/rotation it carries) illegally
+      overlap a non-excluded solid? */
+  private blockedBySolid(mover: WorldObject, exclude: ReadonlySet<string>): boolean {
     if (!mover.solid) return false
-    return this.collisions(rect, exclude).some((o) => !this.canOverlap?.(mover, o))
+    const pts = obbOf(mover)
+    return this.doc.objects.some(
+      (o) =>
+        o.solid === true &&
+        !exclude.has(o.id) &&
+        polysIntersect(pts, obbOf(o)) &&
+        !this.canOverlap?.(mover, o),
+    )
   }
 
   /** Nearest port to a screen point within PORT_TOL_PX, as an edge endpoint. */
@@ -367,7 +395,8 @@ export class Engine {
     let bd = tol
     for (const o of this.doc.objects) {
       for (const p of o.ports ?? []) {
-        const d = Math.hypot(o.x + p.fx * o.w - w.x, o.y + p.fy * o.h - w.y)
+        const wp = objPoint(o, p.fx, p.fy)
+        const d = Math.hypot(wp.x - w.x, wp.y - w.y)
         if (d <= bd) {
           bd = d
           best = { obj: o.id, port: p.id }
@@ -426,7 +455,9 @@ export class Engine {
 
   // --- input (screen px, canvas-relative) ---
 
-  /** Begin a resize gesture on `id`, moving the world-space edges given by `dir`. */
+  /** Begin a resize gesture on `id`, moving the local-space edges given
+      by `dir` (for a rotated object the handles ride its rotation, so
+      `dir` is in the object's own axes). */
   startResize(pt: Pt, id: string, dir: ResizeDir): void {
     const o = this.doc.objects.find((o) => o.id === id)
     if (!o || o.locked || (dir.x === 0 && dir.y === 0)) return
@@ -434,7 +465,23 @@ export class Engine {
     this.resizeId = id
     this.resizeDir = dir
     this.resizeOrig = { x: o.x, y: o.y, w: o.w, h: o.h }
+    this.resizeCenter = objCenter(o)
+    this.resizeRot = o.rot ?? 0
     this.cursorWorld = this.screenToWorld(pt)
+  }
+
+  /** Begin a rotate gesture on `id` (e.g. its rotate handle). */
+  startRotate(pt: Pt, id: string): void {
+    const o = this.doc.objects.find((o) => o.id === id)
+    if (!o || o.locked) return
+    this.mode = 'rotate'
+    this.rotateId = id
+    this.rotateOrig = o.rot ?? 0
+    this.rotateCenter = objCenter(o)
+    const w = this.screenToWorld(pt)
+    this.rotateStartAng = Math.atan2(w.y - this.rotateCenter.y, w.x - this.rotateCenter.x)
+    this.rotate = { id, deg: this.rotateOrig }
+    this.cursorWorld = w
   }
 
   pointerDown(pt: Pt, opts: PointerOpts = {}): void {
@@ -488,9 +535,27 @@ export class Engine {
     this.emit()
   }
 
-  pointerMove(pt: Pt): void {
+  pointerMove(pt: Pt, opts: { angleSnap?: boolean } = {}): void {
     const w = this.screenToWorld(pt)
     this.cursorWorld = w
+
+    if (this.mode === 'rotate' && this.rotateId && this.rotate) {
+      const ang = Math.atan2(w.y - this.rotateCenter.y, w.x - this.rotateCenter.x)
+      let deg = this.rotateOrig + ((ang - this.rotateStartAng) * 180) / Math.PI
+      if (opts.angleSnap && this.rotateSnapDeg > 0) {
+        deg = Math.round(deg / this.rotateSnapDeg) * this.rotateSnapDeg
+      }
+      deg = ((deg % 360) + 360) % 360
+      this.rotate = { id: this.rotateId, deg }
+      if (this.collisionMode !== 'none') {
+        const o = this.doc.objects.find((o) => o.id === this.rotateId)
+        this.dragInvalid =
+          o !== undefined &&
+          this.blockedBySolid({ ...o, rot: deg }, new Set([o.id]))
+      }
+      this.emit()
+      return
+    }
 
     if (this.mode === 'drag') {
       const g = this.doc.grid
@@ -524,11 +589,7 @@ export class Engine {
           const o = this.doc.objects.find((o) => o.id === id)
           return (
             o !== undefined &&
-            this.blockedBySolid(
-              o,
-              { x: o.x + dx, y: o.y + dy, w: o.w, h: o.h },
-              moving,
-            )
+            this.blockedBySolid({ ...o, x: o.x + dx, y: o.y + dy }, moving)
           )
         })
       }
@@ -538,9 +599,10 @@ export class Engine {
 
     if (this.mode === 'marquee') {
       this.marquee = rectBetween(this.startWorld, w)
+      const mq = rectPoly(this.marquee)
       const ids = new Set(
         this.doc.objects
-          .filter((o) => rectsIntersect(this.marquee as Rect, rectOf(o)))
+          .filter((o) => polysIntersect(mq, obbOf(o)))
           .map((o) => o.id),
       )
       const groups = new Set(
@@ -578,29 +640,34 @@ export class Engine {
       } else if (g.snap && g.size > 0) {
         wy = Math.round(w.y / g.size) * g.size
       }
+      // rotated objects resize along their own axes — inverse-rotate the
+      // pointer into the local frame, then run the usual rect math
+      const lp = this.resizeRot
+        ? invRotPt({ x: wx, y: wy }, this.resizeCenter, this.resizeRot)
+        : { x: wx, y: wy }
       const r = { x: orig.x, y: orig.y, w: orig.w, h: orig.h }
       if (dir.x > 0) {
-        r.x = Math.min(orig.x, wx)
-        r.w = Math.max(Math.abs(wx - orig.x), MIN_SIZE)
+        r.x = Math.min(orig.x, lp.x)
+        r.w = Math.max(Math.abs(lp.x - orig.x), MIN_SIZE)
       } else if (dir.x < 0) {
         const x1 = orig.x + orig.w
-        r.x = Math.min(wx, x1)
-        r.w = Math.max(Math.abs(x1 - wx), MIN_SIZE)
+        r.x = Math.min(lp.x, x1)
+        r.w = Math.max(Math.abs(x1 - lp.x), MIN_SIZE)
       }
       if (dir.y > 0) {
-        r.y = Math.min(orig.y, wy)
-        r.h = Math.max(Math.abs(wy - orig.y), MIN_SIZE)
+        r.y = Math.min(orig.y, lp.y)
+        r.h = Math.max(Math.abs(lp.y - orig.y), MIN_SIZE)
       } else if (dir.y < 0) {
         const y1 = orig.y + orig.h
-        r.y = Math.min(wy, y1)
-        r.h = Math.max(Math.abs(y1 - wy), MIN_SIZE)
+        r.y = Math.min(lp.y, y1)
+        r.h = Math.max(Math.abs(y1 - lp.y), MIN_SIZE)
       }
       this.resize = { id: this.resizeId, rect: r }
       if (this.collisionMode !== 'none') {
         const mover = this.doc.objects.find((o) => o.id === this.resizeId)
         this.dragInvalid =
           mover !== undefined &&
-          this.blockedBySolid(mover, r, new Set([this.resizeId]))
+          this.blockedBySolid({ ...mover, ...r }, new Set([this.resizeId]))
       }
       this.emit()
       return
@@ -640,6 +707,13 @@ export class Engine {
         this.emitDoc()
       }
     }
+    if (this.mode === 'rotate' && this.rotate && !blocked) {
+      const o = this.doc.objects.find((o) => o.id === this.rotate!.id)
+      if (o && this.rotate.deg !== (o.rot ?? 0)) {
+        this.doc = rotateObject(this.doc, o.id, this.rotate.deg)
+        this.emitDoc()
+      }
+    }
     if (this.mode === 'resize' && this.resize && this.resizeOrig && !blocked) {
       const r = this.resize.rect
       const o = this.resizeOrig
@@ -674,6 +748,8 @@ export class Engine {
     this.resizeId = null
     this.resizeOrig = null
     this.marquee = null
+    this.rotate = null
+    this.rotateId = null
     this.emit()
   }
 
@@ -689,15 +765,12 @@ export class Engine {
     return [...set].filter((id) => !this.lockedById(id))
   }
 
-  /** World-space bounding box of the selected objects, or null. */
+  /** World-space bounding box of the selected objects, or null.
+      Rotated objects contribute their OBB's axis-aligned bounds. */
   selectionBounds(): Rect | null {
     const objs = this.doc.objects.filter((o) => this.selectedIds.has(o.id))
     if (objs.length === 0) return null
-    const x0 = Math.min(...objs.map((o) => o.x))
-    const y0 = Math.min(...objs.map((o) => o.y))
-    const x1 = Math.max(...objs.map((o) => o.x + o.w))
-    const y1 = Math.max(...objs.map((o) => o.y + o.h))
-    return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
+    return aabbOf(objs.flatMap((o) => obbOf(o)))
   }
 
   private snapTargets(exclude: Set<string>): { xs: number[]; ys: number[] } {
@@ -710,8 +783,20 @@ export class Engine {
     }
     for (const o of this.doc.objects) {
       if (exclude.has(o.id)) continue
-      xs.push(o.x, o.x + o.w / 2, o.x + o.w)
-      ys.push(o.y, o.y + o.h / 2, o.y + o.h)
+      const corners = obbOf(o)
+      for (const pt of corners) {
+        xs.push(pt.x)
+        ys.push(pt.y)
+      }
+      for (let i = 0; i < 4; i++) {
+        const a = corners[i]
+        const b = corners[(i + 1) % 4]
+        xs.push((a.x + b.x) / 2)
+        ys.push((a.y + b.y) / 2)
+      }
+      const c = objCenter(o)
+      xs.push(c.x)
+      ys.push(c.y)
       for (const sp of shapeSnapPoints(o)) {
         xs.push(sp.x)
         ys.push(sp.y)

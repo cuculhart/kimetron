@@ -3,7 +3,7 @@ import { formatLength } from '@kimetron/core'
 import type { WorldObject } from '@kimetron/core'
 import { objectFrame, rulerTicks } from '@kimetron/dom'
 import { IsleCanvas, useEngine, useEngineVersion } from '@kimetron/react'
-import { areas, canOverlap, FURNITURE, GRID_CFG, sampleDoc, spawn, spawnDim } from './model'
+import { areas, canOverlap, FURNITURE, GRID_CFG, sampleDoc, spawn, spawnDim, spawnWall } from './model'
 import type { DimData, ItemData } from './model'
 import '../../demo/src/styles.css'
 
@@ -69,6 +69,24 @@ function DimView({ engine, o }: { engine: Parameters<typeof objectFrame>[0]; o: 
   )
 }
 
+/** Compass symbol — rendered in the object's local box, which the
+    canvas rotates for us when `o.rot` is set. */
+function CompassView({ f }: { f: { width: number; height: number } }) {
+  const cx = f.width / 2
+  const cy = f.height / 2
+  const r = Math.min(f.width, f.height) * 0.42
+  return (
+    <svg width={f.width} height={f.height} style={{ display: 'block', overflow: 'visible' }}>
+      <circle cx={cx} cy={cy} r={r} fill="#fff" stroke={DIM_LINE} strokeWidth={1} />
+      <path
+        d={`M ${cx} ${cy - r * 0.78} L ${cx + r * 0.22} ${cy + r * 0.3} L ${cx} ${cy + r * 0.12} L ${cx - r * 0.22} ${cy + r * 0.3} Z`}
+        fill={DIM_LINE}
+      />
+      <text x={cx} y={cy - r * 0.9} textAnchor="middle" fontSize={12} fontWeight={700} fill={DIM_LINE}>N</text>
+    </svg>
+  )
+}
+
 export function App() {
   const engine = useEngine({
     units: 'mm',
@@ -130,6 +148,7 @@ export function App() {
         {Object.keys(FURNITURE).map((k) => (
           <button key={k} onClick={() => add(k)}>+{FURNITURE[k].label}</button>
         ))}
+        <button onClick={() => { const w = spawnWall(); engine.addObject(w); engine.setSelection([w.id]) }}>+斜め壁</button>
         <span className="sep" />
         <button onClick={() => addDim('x')}>+H寸法</button>
         <button onClick={() => addDim('y')}>+V寸法</button>
@@ -144,6 +163,7 @@ export function App() {
           renderObject={(o: WorldObject) => {
             if (o.kind === 'site') return null
             if (o.kind === 'wall') return <WallCore f={objectFrame(engine, o)} />
+            if (o.kind === 'compass') return <CompassView f={objectFrame(engine, o)} />
             if (o.kind === 'dim') return <DimView engine={engine} o={o} />
             const d = o.data as ItemData | undefined
             return (
@@ -194,7 +214,7 @@ export function App() {
         </span>
         <span className="sep" />
         <span className="hint">
-          solids abut but never overlap / doors sit on walls / dims snap to wall cores
+          solids abut but never overlap / doors sit on walls / dims snap to wall cores / ◎ rotates (Shift = 15°)
         </span>
       </footer>
     </div>

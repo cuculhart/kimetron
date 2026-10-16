@@ -1,3 +1,4 @@
+import { objPoint } from './geometry'
 import type { Doc, Edge, Pt, WorldConfig, WorldObject } from './types'
 
 export function createDocument(cfg: WorldConfig = {}): Doc {
@@ -55,13 +56,14 @@ export function removeEdges(doc: Doc, ids: Iterable<string>): Doc {
   return { ...doc, edges: doc.edges.filter((e) => !set.has(e.id)) }
 }
 
-/** Resolve an endpoint to a world point, or null if the target is gone. */
+/** Resolve an endpoint to a world point, or null if the target is gone.
+    Ports are normalized (fx, fy) so they ride the object's rotation. */
 export function endpointPos(doc: Doc, ep: { obj: string; port?: string }): Pt | null {
   const o = doc.objects.find((o) => o.id === ep.obj)
   if (!o) return null
   if (ep.port) {
     const p = o.ports?.find((p) => p.id === ep.port)
-    if (p) return { x: o.x + p.fx * o.w, y: o.y + p.fy * o.h }
+    if (p) return objPoint(o, p.fx, p.fy)
   }
   return { x: o.x + o.w / 2, y: o.y + o.h / 2 }
 }
@@ -110,6 +112,14 @@ export function reorderObjects(
     }
   }
   return { ...doc, objects: objs }
+}
+
+/** Set an object's rotation (world CCW degrees, about the bbox center). */
+export function rotateObject(doc: Doc, id: string, deg: number): Doc {
+  return {
+    ...doc,
+    objects: doc.objects.map((o) => (o.id === id ? { ...o, rot: deg } : o)),
+  }
 }
 
 export function resizeObject(
@@ -190,6 +200,7 @@ export function deserializeDoc(json: string): Doc {
             },
           }
         : {}),
+      ...(typeof o.rot === 'number' && Number.isFinite(o.rot) ? { rot: o.rot } : {}),
       ...(typeof o.group === 'string' ? { group: o.group } : {}),
       ...(o.locked === true ? { locked: true } : {}),
       ...(o.solid === true ? { solid: true } : {}),

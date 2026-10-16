@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `@kimetron/core`: `WorldObject.rot` — rotation in world CCW degrees
+  about the bbox center (`x/y/w/h` stay the unrotated box). Geometry
+  helpers `rotPt`/`invRotPt`/`objCenter`/`objPoint`/`obbOf`/`aabbOf`/
+  `rectPoly`/`polysIntersect` (SAT); `rotateObject` doc op
+- `@kimetron/core`: rotation-aware engine — hit-test inverse-rotates
+  the query point (shape kinds included), `collisions`/marquee use the
+  OBB via SAT (edge-touching still legal), snap targets include rotated
+  vertices/edge midpoints/center, ports and edge endpoints resolve
+  through rotation, `selectionBounds` is the rotated AABB
+- `@kimetron/core`: rotate gesture — `startRotate(pt, id)` +
+  `engine.rotate` preview, committed on pointerUp; `rotateSnapDeg`
+  (default 15) applies while `pointerMove`'s `angleSnap` opt is held
+  (Shift). Resizing a rotated object works in its local axes; the
+  center-pivot convention means the opposite corner drifts in world
+- `@kimetron/dom`/`@kimetron/react`: objects render with
+  `rotate()` appended to their translate; `handlePointsFor` puts the 8
+  resize handles on the rotated corners with angle-aware cursors;
+  `.ki-rot` rotate handle (`data-ki-rotate`) above the selected object;
+  HUD shows degrees while rotating; `screenRotDeg` helper
+- `drivers/plan`: a 45° diagonal partition wall (+斜め壁 spawn button),
+  a rotated chair, and a compass object proving rot rides selection,
+  handles, snap and collision
+
 ## [0.8.0] - 2026-10-16
 
 ### Added

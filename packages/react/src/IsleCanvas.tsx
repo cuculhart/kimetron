@@ -2,7 +2,7 @@ import { useEffect, useRef, useSyncExternalStore } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { Engine, isShapeKind, renderOrder } from '@kimetron/core'
 import type { Doc, WorldConfig, WorldObject } from '@kimetron/core'
-import { attachInput, DOUBLE_INNER, doubleWidths, edgeAttrs, edgeMarkerDefs, gridBackground, handlePoints, hudText, injectStyles, marqueeFrame, objectFrame, pageFrame, portPoints, routePathD, shapeAttrs, shapeCapMarkerDefs } from '@kimetron/dom'
+import { attachInput, DOUBLE_INNER, doubleWidths, edgeAttrs, edgeMarkerDefs, gridBackground, handlePointsFor, hudText, injectStyles, marqueeFrame, objectFrame, pageFrame, portPoints, rotateHandlePoint, routePathD, shapeAttrs, shapeCapMarkerDefs } from '@kimetron/dom'
 
 export function useEngine(cfg?: WorldConfig): Engine {
   const ref = useRef<Engine | null>(null)
@@ -68,7 +68,8 @@ export function IsleCanvas({
     engine.selectedIds.size === 1
       ? engine.doc.objects.find((o) => engine.selectedIds.has(o.id))
       : undefined
-  const handles = selObj ? handlePoints(objectFrame(engine, selObj)) : []
+  const handles = selObj ? handlePointsFor(engine, selObj) : []
+  const rotHandle = selObj ? rotateHandlePoint(engine, selObj) : null
 
   return (
     <div
@@ -158,7 +159,7 @@ export function IsleCanvas({
                 : '')
             }
             style={{
-              transform: `translate(${f.left}px, ${f.top}px)`,
+              transform: `translate(${f.left}px, ${f.top}px)${f.rot ? ` rotate(${f.rot}deg)` : ''}`,
               width: f.width,
               height: f.height,
               ...(isShapeKind(o.kind)
@@ -251,6 +252,14 @@ export function IsleCanvas({
           style={{ transform: `translate(${h.x}px, ${h.y}px)`, cursor: h.cursor }}
         />
       ))}
+      {rotHandle && selObj && (
+        <div
+          className="ki-rot"
+          data-ki-rotate=""
+          data-ki-obj={selObj.id}
+          style={{ transform: `translate(${rotHandle.x}px, ${rotHandle.y}px)` }}
+        />
+      )}
       {marquee && (
         <div
           className="ki-marquee"

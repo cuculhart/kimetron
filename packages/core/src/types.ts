@@ -78,6 +78,9 @@ export interface WorldObject {
   y: number
   w: number
   h: number
+  /** Rotation in degrees, world space, about the bbox center.
+      x/y/w/h always describe the unrotated box — rot spins it. */
+  rot?: number
   ports?: Port[]
   style?: WorldObjectStyle
   shape?: ObjectShape

@@ -29,6 +29,14 @@ export {
   rectContains,
   rectOverlapArea,
   rectBetween,
+  rotPt,
+  invRotPt,
+  objCenter,
+  objPoint,
+  obbOf,
+  aabbOf,
+  rectPoly,
+  polysIntersect,
 } from './geometry'
 export {
   createDocument,
@@ -40,6 +48,7 @@ export {
   reorderObjects,
   renderOrder,
   resizeObject,
+  rotateObject,
   serializeDoc,
   deserializeDoc,
   addEdge,

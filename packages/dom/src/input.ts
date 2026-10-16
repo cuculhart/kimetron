@@ -11,10 +11,15 @@ export function attachInput(el: HTMLElement, engine: Engine): () => void {
     const handle = (e.target as HTMLElement).closest?.(
       '[data-ki-handle]',
     ) as HTMLElement | null
+    const rot = (e.target as HTMLElement).closest?.(
+      '[data-ki-rotate]',
+    ) as HTMLElement | null
     const port = (e.target as HTMLElement).closest?.(
       '[data-ki-port]',
     ) as HTMLElement | null
-    if (handle?.dataset.kiObj) {
+    if (rot?.dataset.kiObj) {
+      engine.startRotate(toLocal(e), rot.dataset.kiObj)
+    } else if (handle?.dataset.kiObj) {
       engine.startResize(
         toLocal(e),
         handle.dataset.kiObj,
@@ -32,7 +37,8 @@ export function attachInput(el: HTMLElement, engine: Engine): () => void {
     el.setPointerCapture(e.pointerId)
     e.preventDefault()
   }
-  const move = (e: PointerEvent) => engine.pointerMove(toLocal(e))
+  const move = (e: PointerEvent) =>
+    engine.pointerMove(toLocal(e), { angleSnap: e.shiftKey })
   const up = (e: PointerEvent) => {
     engine.pointerUp()
     if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId)

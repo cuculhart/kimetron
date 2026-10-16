@@ -1,5 +1,5 @@
 import { distToSegment } from './edge'
-import { pointInRect, rectOf } from './geometry'
+import { invRotPt, objCenter, pointInRect, rectOf, rotPt } from './geometry'
 import type { Pt, WorldObject } from './types'
 
 /** Kinds the engine interprets as non-rectangular outlines. */
@@ -68,27 +68,40 @@ export function catmullRomPolyline(pts: Pt[], samplesPerSpan = 16): Pt[] {
   return out
 }
 
-/** World-space sampled outline of a shape kind — for hit tests. */
+/** World-space sampled outline of a shape kind — for hit tests.
+    Rotation is applied to the resolved points. */
 export function shapePolyline(o: WorldObject): Pt[] {
+  let pts: Pt[]
   if (o.kind === 'arc') {
     const { a0, delta } = arcAngles(o)
     const n = Math.max(16, Math.round(delta / 8))
-    const pts: Pt[] = []
+    pts = []
     for (let i = 0; i <= n; i++) pts.push(arcPoint(o, a0 + (delta * i) / n))
-    return pts
+  } else {
+    const anchors = shapeAnchors(o).map((p) => fxToWorld(o, p.fx, p.fy))
+    pts = o.kind === 'curve' ? catmullRomPolyline(anchors) : anchors
   }
-  const anchors = shapeAnchors(o).map((p) => fxToWorld(o, p.fx, p.fy))
-  if (o.kind === 'curve') return catmullRomPolyline(anchors)
-  return anchors
+  if (o.rot) {
+    const c = objCenter(o)
+    return pts.map((p) => rotPt(p, c, o.rot as number))
+  }
+  return pts
 }
 
 /** World points that participate in object snapping (in addition to bbox edges). */
 export function shapeSnapPoints(o: WorldObject): Pt[] {
+  let pts: Pt[]
   if (o.kind === 'arc') {
     const { a0, a1 } = arcAngles(o)
-    return [arcPoint(o, a0), arcPoint(o, a1)]
+    pts = [arcPoint(o, a0), arcPoint(o, a1)]
+  } else {
+    pts = shapeAnchors(o).map((p) => fxToWorld(o, p.fx, p.fy))
   }
-  return shapeAnchors(o).map((p) => fxToWorld(o, p.fx, p.fy))
+  if (o.rot) {
+    const c = objCenter(o)
+    return pts.map((p) => rotPt(p, c, o.rot as number))
+  }
+  return pts
 }
 
 function distToPolyline(p: Pt, pts: Pt[]): number {
@@ -100,21 +113,24 @@ function distToPolyline(p: Pt, pts: Pt[]): number {
 }
 
 /** Kind-aware hit test. `tol` is in world units; rect kinds ignore it
-    (the bbox is the hit area). */
+    (the bbox is the hit area). Rotated objects are tested by
+    inverse-rotating the query point into the local frame. */
 export function hitObject(o: WorldObject, p: Pt, tol: number): boolean {
+  const lp = o.rot ? invRotPt(p, objCenter(o), o.rot) : p
+  const lo = o.rot ? { ...o, rot: 0 } : o
   if (o.kind === 'line' || o.kind === 'curve' || o.kind === 'arc') {
-    const pts = shapePolyline(o)
-    return pts.length >= 2 && distToPolyline(p, pts) <= tol
+    const pts = shapePolyline(lo)
+    return pts.length >= 2 && distToPolyline(lp, pts) <= tol
   }
   if (o.kind === 'ellipse') {
     const rx = o.w / 2
     const ry = o.h / 2
     if (rx <= 0 || ry <= 0) return pointInRect(p, rectOf(o))
-    const dx = (p.x - (o.x + rx)) / rx
-    const dy = (p.y - (o.y + ry)) / ry
+    const dx = (lp.x - (o.x + rx)) / rx
+    const dy = (lp.y - (o.y + ry)) / ry
     const r = Math.hypot(dx, dy)
     const band = tol / Math.min(rx, ry)
     return o.style?.fill ? r <= 1 + band : Math.abs(r - 1) <= band
   }
-  return pointInRect(p, rectOf(o))
+  return pointInRect(lp, rectOf(o))
 }

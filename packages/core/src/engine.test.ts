@@ -768,6 +768,108 @@ describe('collision, layer and major grid', () => {
   })
 })
 
+describe('rotation', () => {
+  function make(objs: WorldObject[], snapGrid = true) {
+    const e = new Engine(
+      { units: 'mm', origin: 'bottom-left', grid: { size: 10, snap: snapGrid } },
+      objs,
+    )
+    e.viewport = { x: 0, y: 500, zoom: 1 }
+    return e
+  }
+  const box = { id: 'a', kind: 'rect', x: 0, y: 0, w: 100, h: 50 } // center (50,25)
+
+  it('hit-tests the rotated outline, not the unrotated bbox', () => {
+    const e = make([{ ...box, rot: 45 }])
+    // rotated +x corner: (50,25) + 50·(cos45,sin45) ≈ (85.4, 60.4); (85,60) lands inside
+    expect(e.objectAt(e.worldToScreen({ x: 85, y: 60 }))?.id).toBe('a')
+    // the unrotated bbox corner (0,50) lies outside the rotated outline
+    expect(e.objectAt(e.worldToScreen({ x: 1, y: 49 }))).toBeNull()
+  })
+
+  it('marquee uses the OBB — a rotated corner selects, an AABB-only point does not', () => {
+    const e = make([{ ...box, rot: 45 }])
+    // world (20,55) is inside the AABB but outside the rotated box
+    e.pointerDown(e.worldToScreen({ x: 15, y: 50 }))
+    e.pointerMove(e.worldToScreen({ x: 25, y: 60 }))
+    e.pointerUp()
+    expect(e.selectedIds.size).toBe(0)
+    // the rotated corner around (85.4, 60.4) is real geometry
+    e.pointerDown(e.worldToScreen({ x: 80, y: 55 }))
+    e.pointerMove(e.worldToScreen({ x: 90, y: 65 }))
+    e.pointerUp()
+    expect(e.selectedIds.has('a')).toBe(true)
+  })
+
+  it('collisions are OBB-aware under reject', () => {
+    const wall = { id: 'w', kind: 'wall', x: 60, y: 60, w: 40, h: 20, solid: true }
+    // box rotated 45°: its tip reaches x≈85 — dragging right overlaps the wall
+    const e = make([{ ...box, rot: 45, solid: true }, wall], false)
+    e.collisionMode = 'reject'
+    e.pointerDown(e.worldToScreen({ x: 50, y: 25 }))
+    e.pointerMove(e.worldToScreen({ x: 60, y: 25 })) // dx=+10 → tip reaches the wall
+    expect(e.dragInvalid).toBe(true)
+    e.pointerUp()
+    expect(e.doc.objects[0].x).toBe(0)
+  })
+
+  it('snap targets include rotated vertices', () => {
+    // 'a' rotated 90°: corner (0,0) maps to world (75,-25)
+    const b = { id: 'b', kind: 'rect', x: 200, y: 0, w: 20, h: 20 }
+    const e = make([{ ...box, rot: 90 }, b])
+    e.pointerDown(e.worldToScreen({ x: 205, y: 10 }))
+    e.pointerMove(e.worldToScreen({ x: 79, y: 10 })) // b.x → 74, vertex x=75 in range
+    e.pointerUp()
+    expect(e.doc.objects[1].x).toBe(75)
+  })
+
+  it('rotate gesture commits degrees; shift-style angleSnap rounds to 15°', () => {
+    const e = make([box], false)
+    e.startRotate(e.worldToScreen({ x: 150, y: 25 }), 'a') // east of center → 0°
+    e.pointerMove(e.worldToScreen({ x: 50, y: 125 })) // due north → +90°
+    expect(e.rotate?.deg).toBeCloseTo(90, 1)
+    e.pointerUp()
+    expect(e.doc.objects[0].rot).toBeCloseTo(90, 1)
+
+    const e2 = make([box], false)
+    e2.startRotate(e2.worldToScreen({ x: 150, y: 25 }), 'a')
+    // atan2(69,71) ≈ 44.16° — snaps to 45 with angleSnap
+    e2.pointerMove(e2.worldToScreen({ x: 121, y: 94 }), { angleSnap: true })
+    expect(e2.rotate?.deg).toBe(45)
+    e2.pointerUp()
+    expect(e2.doc.objects[0].rot).toBe(45)
+  })
+
+  it('resizing a rotated object works in local axes', () => {
+    const e = make([{ ...box, rot: 90 }], false)
+    // dir x+1 = local max-x edge; the rotated handle sits at world (50,75)
+    e.startResize(e.worldToScreen({ x: 50, y: 75 }), 'a', { x: 1, y: 0 })
+    e.pointerMove(e.worldToScreen({ x: 50, y: 125 })) // +100 world-y → local x = 150
+    e.pointerUp()
+    expect(e.doc.objects[0]).toMatchObject({ w: 150, h: 50, rot: 90 })
+  })
+
+  it('ports resolve through rotation', () => {
+    const o = {
+      ...box,
+      rot: 90,
+      ports: [{ id: 'p', fx: 1, fy: 0.5 }],
+    }
+    const e = make([o])
+    // local (100,25) → rot90 → (50,75)
+    const p = endpointPos(e.doc, { obj: 'a', port: 'p' })
+    expect(p?.x).toBeCloseTo(50, 6)
+    expect(p?.y).toBeCloseTo(75, 6)
+  })
+
+  it('serializes rot', () => {
+    const doc = createDocument({ units: 'mm' })
+    const d = { ...doc, objects: [{ id: 'r', kind: 'rect', x: 0, y: 0, w: 10, h: 10, rot: 30 }] }
+    const out = deserializeDoc(serializeDoc(d))
+    expect(out.objects[0].rot).toBe(30)
+  })
+})
+
 describe('doc serialize', () => {
   it('roundtrips units/origin/grid/objects', () => {
     const doc = createDocument({ units: 'inch', origin: 'top-left', grid: { size: 0.5, snap: false } })

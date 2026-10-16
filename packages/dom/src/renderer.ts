@@ -7,12 +7,14 @@ import {
   edgeAttrs,
   edgeMarkerDefs,
   handlePoints,
+  handlePointsFor,
   hudText,
   injectStyles,
   marqueeFrame,
   objectFrame,
   pageFrame,
   portPoints,
+  rotateHandlePoint,
   routePathD,
   shapeAttrs,
   shapeCapMarkerDefs,
@@ -102,6 +104,12 @@ export function createRenderer(container: HTMLElement, opts: RendererOptions): R
     return el
   })
 
+  const rotEl = document.createElement('div')
+  rotEl.className = 'ki-rot'
+  rotEl.dataset.kiRotate = ''
+  rotEl.hidden = true
+  container.appendChild(rotEl)
+
   function render(): void {
     const seen = new Set<string>()
     const ordered = renderOrder(engine.doc.objects)
@@ -117,7 +125,7 @@ export function createRenderer(container: HTMLElement, opts: RendererOptions): R
         objEls.set(o.id, el)
       }
       const f = objectFrame(engine, o)
-      el.style.transform = `translate(${f.left}px, ${f.top}px)`
+      el.style.transform = `translate(${f.left}px, ${f.top}px)${f.rot ? ` rotate(${f.rot}deg)` : ''}`
       el.style.width = `${f.width}px`
       el.style.height = `${f.height}px`
       const sel = engine.selectedIds.has(o.id)
@@ -198,7 +206,7 @@ export function createRenderer(container: HTMLElement, opts: RendererOptions): R
         ? engine.doc.objects.find((o) => engine.selectedIds.has(o.id))
         : undefined
     if (selObj) {
-      const pts = handlePoints(objectFrame(engine, selObj))
+      const pts = handlePointsFor(engine, selObj)
       for (const el of handleEls) {
         const p = pts.find((p) => p.dir === el.dataset.kiHandle)
         if (!p) continue
@@ -207,8 +215,17 @@ export function createRenderer(container: HTMLElement, opts: RendererOptions): R
         el.style.transform = `translate(${p.x}px, ${p.y}px)`
         el.style.cursor = p.cursor
       }
+      const rp = rotateHandlePoint(engine, selObj)
+      if (rp) {
+        rotEl.hidden = false
+        rotEl.dataset.kiObj = selObj.id
+        rotEl.style.transform = `translate(${rp.x}px, ${rp.y}px)`
+      } else {
+        rotEl.hidden = true
+      }
     } else {
       for (const el of handleEls) el.hidden = true
+      rotEl.hidden = true
     }
 
     const defs = document.createElementNS(SVG_NS, 'defs')
@@ -326,6 +343,7 @@ export function createRenderer(container: HTMLElement, opts: RendererOptions): R
       for (const el of objEls.values()) el.remove()
       objEls.clear()
       for (const el of handleEls) el.remove()
+      rotEl.remove()
       pageEl.remove()
       hudEl.remove()
       marqueeEl.remove()

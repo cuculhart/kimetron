@@ -1,4 +1,4 @@
-import { rectOverlapArea, type WorldObject } from '@kimetron/core'
+import { aabbOf, obbOf, rectOverlapArea, type WorldObject } from '@kimetron/core'
 
 /**
  * plan spike: a 10 mm-grid floor plan.
@@ -25,18 +25,21 @@ export interface WallData {
 function wall(
   id: string, x: number, y: number, w: number, h: number,
   perimeter = false,
+  rot?: number,
 ): WorldObject {
   return {
     id, kind: 'wall', x, y, w, h,
+    ...(rot ? { rot } : {}),
     solid: true, layer: 10,
     style: { fill: WALL_FILL, stroke: WALL_STROKE },
     data: { perimeter } satisfies WallData,
   }
 }
 
-function furniture(id: string, x: number, y: number, w: number, h: number, label: string): WorldObject {
+function furniture(id: string, x: number, y: number, w: number, h: number, label: string, rot?: number): WorldObject {
   return {
     id, kind: 'furniture', x, y, w, h,
+    ...(rot ? { rot } : {}),
     solid: true, layer: 0,
     style: { fill: FURN_FILL, stroke: FURN_STROKE },
     data: { label } satisfies ItemData,
@@ -61,6 +64,8 @@ export function sampleDoc(): { objects: WorldObject[] } {
       // "|-" T junctions: end edges abut face edges
       wall('wP1', 2400, 320, 120, 1500), // rises from wS's top face
       wall('wP2', 2520, 1500, 800, 120), // leaves wP1's right face
+      // 45° diagonal partition (non-perimeter): OBB collision applies
+      wall('wD', 3100, 2100, 120, 900, false, 45),
       // door: solid (a doorway is occupied space) but may overlap walls
       {
         id: 'door1', kind: 'door', x: 800, y: 200, w: 800, h: 120,
@@ -76,9 +81,16 @@ export function sampleDoc(): { objects: WorldObject[] } {
         data: {},
       },
       furniture('fDesk', 500, 500, 900, 500, '机'),
-      furniture('fChair', 1500, 550, 450, 450, '椅子'),
+      furniture('fChair', 1500, 550, 450, 450, '椅子', -25), // rotated placement
       furniture('fShelf', 2700, 400, 1400, 350, '棚'),
       furniture('fSofa', 600, 2200, 1800, 850, 'ソファ'),
+      // compass — a real rotated object (grab its rotate handle to spin)
+      {
+        id: 'north', kind: 'compass', x: 3950, y: 300, w: 300, h: 300,
+        rot: -20, layer: 12,
+        style: { stroke: '#4a5568' },
+        data: { label: 'N' } satisfies ItemData,
+      },
       // room-width dimension resting on the outer wall faces
       {
         id: 'dimRoom', kind: 'dim', x: 200, y: 60, w: 4000, h: 140,
@@ -153,8 +165,9 @@ export function areas(objects: WorldObject[]): {
   const innerRect = { x: inX0, y: inY0, w: inX1 - inX0, h: inY1 - inY0 }
   // interior partitions eat floor area
   const part = walls.filter((w) => !(w.data as WallData | undefined)?.perimeter)
-  const partCore = part.reduce((s, w) => s + rectOverlapArea(coreRect, w), 0)
-  const partInner = part.reduce((s, w) => s + rectOverlapArea(innerRect, w), 0)
+  // rotated partitions contribute their OBB's axis-aligned bounds
+  const partCore = part.reduce((s, w) => s + rectOverlapArea(coreRect, aabbOf(obbOf(w))), 0)
+  const partInner = part.reduce((s, w) => s + rectOverlapArea(innerRect, aabbOf(obbOf(w))), 0)
 
   return {
     site,
@@ -204,6 +217,7 @@ export const FURNITURE: Record<string, { w: number; h: number; label: string }> 
 }
 
 let n = 0
+let wn = 0
 
 export function spawn(kind: string): WorldObject {
   const t = FURNITURE[kind] ?? { w: 500, h: 500, label: kind }
@@ -216,6 +230,12 @@ export function spawn(kind: string): WorldObject {
     t.h,
     t.label,
   )
+}
+
+/** A diagonal partition wall for trying rotated placement. */
+export function spawnWall(): WorldObject {
+  wn += 1
+  return wall(`wD-${wn}`, 3000 + wn * 60, 2100, 120, 900, false, 45)
 }
 
 export const GRID_CFG = { size: 10, snap: true, major: 10 }

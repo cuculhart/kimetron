@@ -13,13 +13,13 @@ import {
 } from './doc'
 import { distToGeom, edgeGeom } from './edge'
 import {
-  pointInRect,
   rectBetween,
   rectOf,
   rectsIntersect,
   screenToWorld,
   worldToScreen,
 } from './geometry'
+import { hitObject, shapeSnapPoints } from './shape'
 import type { Doc, Edge, EdgeEndpoint, EdgeRoute, GridConfig, Origin, Pt, Rect, Unit, Viewport, WorldConfig, WorldObject } from './types'
 import { formatScale, unitToPx } from './units'
 
@@ -50,6 +50,7 @@ const MIN_SIZE = 1e-3
 const SNAP_TOL_PX = 8
 const PORT_TOL_PX = 10
 const EDGE_TOL_PX = 6
+const HIT_TOL_PX = 6
 
 export class Engine {
   doc: Doc
@@ -286,7 +287,20 @@ export class Engine {
     }
     const copies = this.doc.objects
       .filter((o) => this.selectedIds.has(o.id))
-      .map((o) => ({ ...o, id: fresh(o.id), x: o.x + step, y: o.y + step }))
+      .map((o) => ({
+        ...o,
+        id: fresh(o.id),
+        x: o.x + step,
+        y: o.y + step,
+        ...(o.shape
+          ? {
+              shape: {
+                ...o.shape,
+                points: o.shape.points?.map((p) => ({ ...p })),
+              },
+            }
+          : {}),
+      }))
     this.doc = { ...this.doc, objects: [...this.doc.objects, ...copies] }
     this.emitDoc()
     this.setSelection(copies.map((o) => o.id))
@@ -302,9 +316,10 @@ export class Engine {
 
   objectAt(screenPt: Pt): WorldObject | null {
     const w = this.screenToWorld(screenPt)
+    const tol = HIT_TOL_PX / (unitToPx(this.doc.units) * this.viewport.zoom)
     for (let i = this.doc.objects.length - 1; i >= 0; i--) {
       const o = this.doc.objects[i]
-      if (pointInRect(w, rectOf(o))) return o
+      if (hitObject(o, w, tol)) return o
     }
     return null
   }
@@ -594,6 +609,10 @@ export class Engine {
       if (exclude.has(o.id)) continue
       xs.push(o.x, o.x + o.w / 2, o.x + o.w)
       ys.push(o.y, o.y + o.h / 2, o.y + o.h)
+      for (const p of shapeSnapPoints(o)) {
+        xs.push(p.x)
+        ys.push(p.y)
+      }
     }
     return { xs, ys }
   }

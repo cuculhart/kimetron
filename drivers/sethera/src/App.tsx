@@ -71,7 +71,6 @@ export function App() {
                 <span>{fmt(objectValue(o.id, doc.objects, doc.edges))}</span>
               </div>
             )
-          if (o.kind === 'rule') return null
           const p = o.data as { label?: string; value?: number | null } & Meta | undefined
           return (
             <div className="obj-label">
@@ -93,7 +92,7 @@ export function App() {
         <span>objects {doc.objects.length}</span>
         <span>wires {doc.edges.length}</span>
         <span className="sep" />
-        <span className="hint">wire: out-port → calc a/b only / Σ aggregates contained pieces / lock & group are data-only (engine gaps P25/P26)</span>
+        <span className="hint">wire: out-port → calc a/b only / Σ aggregates contained pieces / line·ellipse·arc·curve are engine shapes (P24) / lock & group still data-only (P25/P26)</span>
       </footer>
     </div>
   )

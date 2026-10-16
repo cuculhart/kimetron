@@ -82,11 +82,12 @@ function calc(id: string, x: number, y: number, op: CalcOp, constB?: number): Wo
   }
 }
 
-/** A "rule" approximated as a thin rect — true line kind is engine gap P24. */
+/** A horizontal rule — a real 'line' kind (chord across the bbox). */
 function rule(id: string, x: number, y: number, w: number): WorldObject {
   return {
-    id, kind: 'rule', x, y, w, h: 1,
-    style: { fill: '#333', stroke: '#333' },
+    id, kind: 'line', x, y, w, h: 2,
+    shape: { points: [{ fx: 0, fy: 0.5 }, { fx: 1, fy: 0.5 }] },
+    style: { stroke: '#333', width: 1.5 },
     data: {},
   }
 }
@@ -101,6 +102,30 @@ export function sampleDoc(): { objects: WorldObject[]; edges: Edge[] } {
     calc('cTax', 285, 45, 'mul', 1.1),
     piece('pNote', 25, 125, '備考: 要確認', null, { locked: true }),
     rule('r1', 15, 150, 100),
+    // shape gallery — the point of this spike (P24)
+    {
+      id: 'lArrow', kind: 'line', x: 165, y: 140, w: 60, h: 20,
+      shape: { points: [{ fx: 0, fy: 0 }, { fx: 1, fy: 1 }] },
+      style: { stroke: '#b45309', width: 2.5, dash: [6, 3], capEnd: 'arrow' },
+      data: {},
+    },
+    {
+      id: 'e1', kind: 'ellipse', x: 255, y: 135, w: 40, h: 25,
+      style: { stroke: '#3a7bd5', width: 2 },
+      data: {},
+    },
+    {
+      id: 'a1', kind: 'arc', x: 320, y: 135, w: 40, h: 40,
+      shape: { a0: 0, a1: 270 },
+      style: { stroke: '#7c3aed', width: 2.5, fill: 'rgba(124,58,237,0.15)' },
+      data: {},
+    },
+    {
+      id: 'c1', kind: 'curve', x: 380, y: 130, w: 80, h: 40,
+      shape: { points: [{ fx: 0, fy: 0.8 }, { fx: 0.3, fy: 0 }, { fx: 0.7, fy: 1 }, { fx: 1, fy: 0.2 }] },
+      style: { stroke: '#0f766e', width: 2, capStart: 'dot', capEnd: 'dot' },
+      data: {},
+    },
     // a "custom piece" pair sharing a group — should move as one (gap P25)
     piece('gHead', 165, 100, '見出し', null, { groupId: 'g1' }),
     piece('gBody', 165, 118, '説明文', null, { groupId: 'g1' }),

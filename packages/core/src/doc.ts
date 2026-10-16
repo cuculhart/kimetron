@@ -150,6 +150,30 @@ export function deserializeDoc(json: string): Doc {
             style: {
               ...(typeof o.style.fill === 'string' ? { fill: o.style.fill } : {}),
               ...(typeof o.style.stroke === 'string' ? { stroke: o.style.stroke } : {}),
+              ...(typeof o.style.width === 'number' ? { width: o.style.width } : {}),
+              ...(Array.isArray(o.style.dash) ? { dash: o.style.dash.map(Number) } : {}),
+              ...(o.style.capStart === 'arrow' || o.style.capStart === 'dot'
+                ? { capStart: o.style.capStart }
+                : {}),
+              ...(o.style.capEnd === 'arrow' || o.style.capEnd === 'dot'
+                ? { capEnd: o.style.capEnd }
+                : {}),
+            },
+          }
+        : {}),
+      ...(o.shape && typeof o.shape === 'object'
+        ? {
+            shape: {
+              ...(Array.isArray(o.shape.points)
+                ? {
+                    points: o.shape.points.map((p) => ({
+                      fx: Number(p.fx) || 0,
+                      fy: Number(p.fy) || 0,
+                    })),
+                  }
+                : {}),
+              ...(typeof o.shape.a0 === 'number' ? { a0: o.shape.a0 } : {}),
+              ...(typeof o.shape.a1 === 'number' ? { a1: o.shape.a1 } : {}),
             },
           }
         : {}),

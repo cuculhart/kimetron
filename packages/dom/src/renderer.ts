@@ -1,4 +1,5 @@
 import type { Engine, WorldObject } from '@kimetron/core'
+import { isShapeKind } from '@kimetron/core'
 import { attachInput } from './input'
 import {
   edgeAttrs,
@@ -9,6 +10,8 @@ import {
   objectFrame,
   portPoints,
   routePathD,
+  shapeAttrs,
+  shapeCapMarkerDefs,
 } from './style'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
@@ -89,14 +92,12 @@ export function createRenderer(container: HTMLElement, opts: RendererOptions): R
     const seen = new Set<string>()
     for (const o of engine.doc.objects) {
       seen.add(o.id)
+      const isShape = isShapeKind(o.kind)
       let el = objEls.get(o.id)
       if (!el) {
         el = document.createElement('div')
         el.className = 'ki-obj'
         el.dataset.id = o.id
-        const content = renderObject(o)
-        if (typeof content === 'string') el.textContent = content
-        else el.appendChild(content)
         container.appendChild(el)
         objEls.set(o.id, el)
       }
@@ -106,8 +107,37 @@ export function createRenderer(container: HTMLElement, opts: RendererOptions): R
       el.style.height = `${f.height}px`
       const sel = engine.selectedIds.has(o.id)
       el.classList.toggle('ki-sel', sel)
-      el.style.background = o.style?.fill ?? ''
-      el.style.borderColor = sel ? '' : (o.style?.stroke ?? '')
+      el.classList.toggle('ki-shape', isShape)
+      if (isShape) {
+        el.style.background = ''
+        el.style.borderColor = ''
+        const sa = shapeAttrs(engine, o)
+        if (sa) {
+          const svg = document.createElementNS(SVG_NS, 'svg')
+          svg.setAttribute('class', 'ki-shape-svg')
+          svg.setAttribute('width', String(f.width))
+          svg.setAttribute('height', String(f.height))
+          const defs = document.createElementNS(SVG_NS, 'defs')
+          for (const m of shapeCapMarkerDefs(engine, o)) defs.appendChild(markerEl(m))
+          const p = document.createElementNS(SVG_NS, 'path')
+          p.setAttribute('d', sa.d)
+          p.setAttribute('fill', sa.fill ?? 'none')
+          if (sa.stroke) p.setAttribute('stroke', sa.stroke)
+          if (sa.strokeWidth) p.setAttribute('stroke-width', String(sa.strokeWidth))
+          if (sa.strokeDasharray) p.setAttribute('stroke-dasharray', sa.strokeDasharray)
+          if (sa.markerStart) p.setAttribute('marker-start', sa.markerStart)
+          if (sa.markerEnd) p.setAttribute('marker-end', sa.markerEnd)
+          svg.replaceChildren(defs, p)
+          el.replaceChildren(svg)
+        }
+      } else {
+        const content = renderObject(o)
+        el.replaceChildren()
+        if (typeof content === 'string') el.textContent = content
+        else el.appendChild(content)
+        el.style.background = o.style?.fill ?? ''
+        el.style.borderColor = sel ? '' : (o.style?.stroke ?? '')
+      }
     }
     for (const [id, el] of objEls) {
       if (!seen.has(id)) {

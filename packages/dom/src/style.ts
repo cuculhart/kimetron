@@ -1,5 +1,5 @@
-import type { Edge, EdgeMarker, EdgeRoute, Engine, Origin, Port, Pt, ResizeDir } from '@kimetron/core'
-import { edgeEndpoints, edgeGeom, unitToPx } from '@kimetron/core'
+import type { Edge, EdgeMarker, EdgeRoute, Engine, Origin, Port, Pt, ResizeDir, WorldObject } from '@kimetron/core'
+import { arcAngles, arcPoint, edgeEndpoints, edgeGeom, shapeAnchors, unitToPx } from '@kimetron/core'
 
 export interface Frame {
   left: number
@@ -195,7 +195,110 @@ export function edgeAttrs(engine: Engine, e: Edge): EdgeAttrs | null {
   }
 }
 
-/** A `<marker>` def needed by an edge: id, glyph kind, resolved color. */
+// --- shape kinds (line / curve / ellipse / arc) ---
+
+const SHAPE_LINE = 'var(--ki-edge, #7d8fa3)'
+
+/** Marker element id for a shape cap. */
+export function shapeCapMarkerId(o: WorldObject, end: 's' | 'e'): string {
+  return `ki-mo-${o.id}-${end}`
+}
+
+/** SVG path `d` (frame-local px) for a shape object, or null. */
+export function shapePathD(engine: Engine, o: WorldObject): string | null {
+  const f = objectFrame(engine, o)
+  const rr =
+    engine.resize && engine.resize.id === o.id
+      ? { ...o, ...engine.resize.rect }
+      : o
+  const d0 =
+    engine.dragDelta && engine.selectedIds.has(o.id)
+      ? engine.dragDelta
+      : { x: 0, y: 0 }
+  const eff = { x: rr.x + d0.x, y: rr.y + d0.y, w: rr.w, h: rr.h }
+  const toLocal = (w: Pt): Pt => {
+    const s = engine.worldToScreen(w)
+    return { x: s.x - f.left, y: s.y - f.top }
+  }
+  const fmt = (p: Pt) => `${p.x} ${p.y}`
+
+  if (o.kind === 'line' || o.kind === 'curve') {
+    const pts = shapeAnchors(o).map((a) =>
+      toLocal({ x: eff.x + a.fx * eff.w, y: eff.y + a.fy * eff.h }),
+    )
+    if (pts.length < 2) return null
+    if (o.kind === 'curve' && pts.length > 2) {
+      let d = `M ${fmt(pts[0])}`
+      for (let i = 0; i < pts.length - 1; i++) {
+        const p0 = pts[Math.max(0, i - 1)]
+        const p1 = pts[i]
+        const p2 = pts[i + 1]
+        const p3 = pts[Math.min(pts.length - 1, i + 2)]
+        const c1 = { x: p1.x + (p2.x - p0.x) / 6, y: p1.y + (p2.y - p0.y) / 6 }
+        const c2 = { x: p2.x - (p3.x - p1.x) / 6, y: p2.y - (p3.y - p1.y) / 6 }
+        d += ` C ${fmt(c1)} ${fmt(c2)} ${fmt(p2)}`
+      }
+      return d
+    }
+    return `M ${fmt(pts[0])} ${pts.slice(1).map((p) => `L ${fmt(p)}`).join(' ')}`
+  }
+
+  const rx = f.width / 2
+  const ry = f.height / 2
+  const cx = f.width / 2
+  const cy = f.height / 2
+  if (o.kind === 'ellipse') {
+    return `M ${cx - rx} ${cy} A ${rx} ${ry} 0 1 1 ${cx + rx} ${cy} A ${rx} ${ry} 0 1 1 ${cx - rx} ${cy} Z`
+  }
+  if (o.kind === 'arc') {
+    const { a0, delta } = arcAngles(o)
+    const p0 = toLocal(arcPoint(eff, a0))
+    const p1 = toLocal(arcPoint(eff, a0 + delta))
+    // world CCW sweeps clockwise on screen under top-left origin
+    const sweep = engine.doc.origin === 'top-left' ? 1 : 0
+    const pie = !!o.style?.fill
+    const head = pie ? `M ${cx} ${cy} L ${fmt(p0)}` : `M ${fmt(p0)}`
+    if (delta === 360) {
+      const pm = toLocal(arcPoint(eff, a0 + 180))
+      const arcs = `A ${rx} ${ry} 0 1 ${sweep} ${fmt(pm)} A ${rx} ${ry} 0 1 ${sweep} ${fmt(p0)}`
+      return pie ? `${head} ${arcs} Z` : `${head} ${arcs}`
+    }
+    const seg = `A ${rx} ${ry} 0 ${delta > 180 ? 1 : 0} ${sweep} ${fmt(p1)}`
+    return pie ? `${head} ${seg} Z` : `${head} ${seg}`
+  }
+  return null
+}
+
+/** Presentation attributes for a shape object's inner `<path>`. */
+export interface ShapeAttrs {
+  d: string
+  fill?: string
+  stroke?: string
+  strokeWidth?: number
+  strokeDasharray?: string
+  markerStart?: string
+  markerEnd?: string
+}
+
+export function shapeAttrs(engine: Engine, o: WorldObject): ShapeAttrs | null {
+  const d = shapePathD(engine, o)
+  if (!d) return null
+  const sel = engine.selectedIds.has(o.id)
+  return {
+    d,
+    fill:
+      o.kind === 'ellipse' || o.kind === 'arc'
+        ? (o.style?.fill ?? 'none')
+        : 'none',
+    stroke: sel ? SEL_COLOR : (o.style?.stroke ?? SHAPE_LINE),
+    strokeWidth: o.style?.width,
+    strokeDasharray: o.style?.dash?.join(' '),
+    markerStart: o.style?.capStart ? `url(#${shapeCapMarkerId(o, 's')})` : undefined,
+    markerEnd: o.style?.capEnd ? `url(#${shapeCapMarkerId(o, 'e')})` : undefined,
+  }
+}
+
+/** A `<marker>` def needed by an edge or a shape cap: id, glyph kind, resolved color. */
 export interface EdgeMarkerDef {
   id: string
   kind: EdgeMarker
@@ -207,6 +310,19 @@ export function edgeMarkerDefs(engine: Engine, e: Edge): EdgeMarkerDef[] {
   const defs: EdgeMarkerDef[] = []
   if (e.markerStart) defs.push({ id: markerId(e, 'start'), kind: e.markerStart, color })
   if (e.markerEnd) defs.push({ id: markerId(e, 'end'), kind: e.markerEnd, color })
+  return defs
+}
+
+/** `<marker>` defs needed by a shape object's caps. */
+export function shapeCapMarkerDefs(engine: Engine, o: WorldObject): EdgeMarkerDef[] {
+  const color = engine.selectedIds.has(o.id)
+    ? SEL_COLOR
+    : (o.style?.stroke ?? SHAPE_LINE)
+  const defs: EdgeMarkerDef[] = []
+  if (o.style?.capStart)
+    defs.push({ id: shapeCapMarkerId(o, 's'), kind: o.style.capStart, color })
+  if (o.style?.capEnd)
+    defs.push({ id: shapeCapMarkerId(o, 'e'), kind: o.style.capEnd, color })
   return defs
 }
 
@@ -237,6 +353,10 @@ export function injectStyles(): void {
 .ki-ports { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
 .ki-port { position: absolute; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: #fff; border: 1.5px solid var(--ki-edge-line, #7d8fa3); box-sizing: border-box; cursor: crosshair; pointer-events: auto; }
 .ki-port:hover { border-color: var(--ki-sel, #3a7bd5); background: var(--ki-sel, #3a7bd5); }
+.ki-obj.ki-shape { border: none; background: transparent; overflow: visible; pointer-events: none; }
+.ki-obj.ki-shape.ki-sel { border: 1px dashed var(--ki-sel, #3a7bd5); box-shadow: none; }
+.ki-shape-svg { position: absolute; left: 0; top: 0; overflow: visible; }
+.ki-shape { fill: none; }
 `
   document.head.appendChild(el)
 }

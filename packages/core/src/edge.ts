@@ -39,7 +39,7 @@ export function edgeGeom(from: Pt, to: Pt, route: EdgeRoute = 'straight'): EdgeG
   return { kind: 'polyline', pts: [from, to] }
 }
 
-function distToSegment(p: Pt, a: Pt, b: Pt): number {
+export function distToSegment(p: Pt, a: Pt, b: Pt): number {
   const dx = b.x - a.x
   const dy = b.y - a.y
   const len2 = dx * dx + dy * dy

@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `@kimetron/core`: shape kinds — `line` (chord across the bbox),
+  `curve` (open Catmull-Rom through normalized anchors),
+  `ellipse` (inscribed in the bbox), `arc` (sweep of the inscribed
+  ellipse, `shape.a0`/`a1` in world degrees, `a0===a1` = full ring).
+  `ObjectShape`/`ShapePoint` types; kind-aware `hitObject` (lines hit
+  on the stroke only, unfilled ellipses on the ring); shape anchors
+  join object-snap targets; `shape` serialized (schemaVersion 2)
+- `@kimetron/core`: `WorldObjectStyle` gains `width`/`dash`/
+  `capStart`/`capEnd` (`'arrow'` | `'dot'`) for shape strokes
+- `@kimetron/dom`/`@kimetron/react`: shape kinds render as an inline
+  `<svg>` inside the object frame (z-order preserved); caps reuse the
+  edge `<marker>` machinery; selection shows a dashed bbox
+- `drivers/sethera`: sethera-piece migration spike — pieces, Σ zone
+  aggregation, calc wiring with directed `out`→`a`/`b` ports via
+  `canConnect`, plus a line/ellipse/arc/curve shape gallery
+
 ## [0.4.0] - 2026-10-16
 
 ### Added

@@ -15,6 +15,25 @@ const ports4 = () => [
 
 engine.addObject({ id: 'vanilla', kind: 'rect', x: 20, y: 20, w: 60, h: 40, ports: ports4() })
 engine.addObject({ id: 'no-react', kind: 'rect', x: 100, y: 80, w: 50, h: 30, ports: ports4() })
+// shape kinds (v0.5.0): line chord / ellipse / arc / curve
+engine.addObject({
+  id: 'diag', kind: 'line', x: 20, y: 90, w: 60, h: 30,
+  style: { stroke: '#b45309', width: 2, capEnd: 'arrow' },
+})
+engine.addObject({
+  id: 'ell', kind: 'ellipse', x: 100, y: 20, w: 40, h: 25,
+  style: { stroke: '#3a7bd5', width: 2, fill: 'rgba(58,123,213,0.15)' },
+})
+engine.addObject({
+  id: 'arc', kind: 'arc', x: 160, y: 20, w: 30, h: 30,
+  shape: { a0: 0, a1: 270 },
+  style: { stroke: '#7c3aed', width: 2 },
+})
+engine.addObject({
+  id: 'wave', kind: 'curve', x: 160, y: 60, w: 80, h: 30,
+  shape: { points: [{ fx: 0, fy: 0.8 }, { fx: 0.3, fy: 0 }, { fx: 0.7, fy: 1 }, { fx: 1, fy: 0.2 }] },
+  style: { stroke: '#0f766e', width: 2, dash: [5, 3] },
+})
 
 const el = document.getElementById('canvas') as HTMLElement
 createRenderer(el, { engine })

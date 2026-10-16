@@ -1,8 +1,8 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
-import { Engine } from '@kimetron/core'
+import { Engine, isShapeKind } from '@kimetron/core'
 import type { Doc, WorldConfig, WorldObject } from '@kimetron/core'
-import { attachInput, edgeAttrs, edgeMarkerDefs, gridBackground, handlePoints, injectStyles, marqueeFrame, objectFrame, portPoints, routePathD } from '@kimetron/dom'
+import { attachInput, edgeAttrs, edgeMarkerDefs, gridBackground, handlePoints, injectStyles, marqueeFrame, objectFrame, portPoints, routePathD, shapeAttrs, shapeCapMarkerDefs } from '@kimetron/dom'
 
 export function useEngine(cfg?: WorldConfig): Engine {
   const ref = useRef<Engine | null>(null)
@@ -125,19 +125,63 @@ export function IsleCanvas({
       {engine.doc.objects.map((o) => {
         const f = objectFrame(engine, o)
         const sel = engine.selectedIds.has(o.id)
+        const shape = isShapeKind(o.kind) ? shapeAttrs(engine, o) : null
         return (
           <div
             key={o.id}
-            className={sel ? 'ki-obj ki-sel' : 'ki-obj'}
+            className={
+              (isShapeKind(o.kind) ? 'ki-obj ki-shape' : 'ki-obj') +
+              (sel ? ' ki-sel' : '')
+            }
             style={{
               transform: `translate(${f.left}px, ${f.top}px)`,
               width: f.width,
               height: f.height,
-              background: o.style?.fill,
-              borderColor: sel ? undefined : o.style?.stroke,
+              ...(isShapeKind(o.kind)
+                ? {}
+                : {
+                    background: o.style?.fill,
+                    borderColor: sel ? undefined : o.style?.stroke,
+                  }),
             }}
           >
-            {renderObject ? renderObject(o) : o.id}
+            {shape ? (
+              <svg className="ki-shape-svg" width={f.width} height={f.height}>
+                <defs>
+                  {shapeCapMarkerDefs(engine, o).map((m) => (
+                    <marker
+                      key={m.id}
+                      id={m.id}
+                      markerUnits="userSpaceOnUse"
+                      orient="auto-start-reverse"
+                      markerWidth={m.kind === 'arrow' ? 10 : 8}
+                      markerHeight={8}
+                      refX={m.kind === 'arrow' ? 9 : 4}
+                      refY={4}
+                    >
+                      {m.kind === 'arrow' ? (
+                        <path d="M 0 0 L 10 4 L 0 8 z" style={{ fill: m.color }} />
+                      ) : (
+                        <circle cx={4} cy={4} r={3} style={{ fill: m.color }} />
+                      )}
+                    </marker>
+                  ))}
+                </defs>
+                <path
+                  d={shape.d}
+                  fill={shape.fill}
+                  stroke={shape.stroke}
+                  strokeWidth={shape.strokeWidth}
+                  strokeDasharray={shape.strokeDasharray}
+                  markerStart={shape.markerStart}
+                  markerEnd={shape.markerEnd}
+                />
+              </svg>
+            ) : renderObject ? (
+              renderObject(o)
+            ) : (
+              o.id
+            )}
           </div>
         )
       })}

@@ -10,6 +10,7 @@ import {
   serializeDoc,
   snap,
   unitToPx,
+  type WorldObject,
   worldToScreen,
 } from './index'
 
@@ -437,6 +438,104 @@ describe('edges and ports', () => {
     expect(out.edges).toEqual(e.doc.edges)
     const v1 = JSON.stringify({ units: 'mm', origin: 'bottom-left', grid: { size: 10, snap: true }, objects: [] })
     expect(deserializeDoc(v1).edges).toEqual([])
+  })
+})
+
+describe('shape kinds', () => {
+  function make(objs: WorldObject[]) {
+    const e = new Engine({ units: 'mm', origin: 'bottom-left', grid: { size: 10, snap: true } }, objs)
+    e.viewport = { x: 0, y: 500, zoom: 1 }
+    return e
+  }
+  const hit = (e: Engine, w: { x: number; y: number }) =>
+    e.objectAt(e.worldToScreen(w))?.id ?? null
+
+  it('hits a diagonal line only near the chord, not its bbox', () => {
+    const e = make([{ id: 'l', kind: 'line', x: 0, y: 0, w: 40, h: 40 }])
+    expect(hit(e, { x: 20, y: 20 })).toBe('l') // on the diagonal
+    expect(hit(e, { x: 38, y: 2 })).toBe(null) // inside bbox, far from line
+  })
+
+  it('hits a custom chord (horizontal rule)', () => {
+    const e = make([
+      {
+        id: 'r',
+        kind: 'line',
+        x: 0,
+        y: 0,
+        w: 60,
+        h: 10,
+        shape: { points: [{ fx: 0, fy: 0.5 }, { fx: 1, fy: 0.5 }] },
+      },
+    ])
+    expect(hit(e, { x: 30, y: 5 })).toBe('r')
+    expect(hit(e, { x: 30, y: 1 })).toBe(null)
+  })
+
+  it('ellipse: filled hits inside, unfilled hits only the ring', () => {
+    const e = make([
+      { id: 'ring', kind: 'ellipse', x: 0, y: 0, w: 40, h: 40 },
+      { id: 'disk', kind: 'ellipse', x: 60, y: 0, w: 40, h: 40, style: { fill: '#fc0' } },
+    ])
+    expect(hit(e, { x: 20, y: 20 })).toBe(null) // center of unfilled ring
+    expect(hit(e, { x: 40, y: 20 })).toBe('ring') // on the ring
+    expect(hit(e, { x: 80, y: 20 })).toBe('disk') // inside filled disk
+  })
+
+  it('arc hits along the swept range only', () => {
+    const e = make([{ id: 'a', kind: 'arc', x: 0, y: 0, w: 40, h: 40, shape: { a0: 0, a1: 90 } }])
+    expect(hit(e, { x: 40, y: 20 })).toBe('a') // a=0 endpoint
+    expect(hit(e, { x: 0, y: 20 })).toBe(null) // opposite side of ellipse, not swept
+  })
+
+  it('curve hits along the anchors path', () => {
+    const e = make([
+      {
+        id: 'c',
+        kind: 'curve',
+        x: 0,
+        y: 0,
+        w: 60,
+        h: 40,
+        shape: { points: [{ fx: 0, fy: 0 }, { fx: 0.5, fy: 1 }, { fx: 1, fy: 0 }] },
+      },
+    ])
+    expect(hit(e, { x: 30, y: 39.5 })).toBe('c') // just below the curve apex
+    expect(hit(e, { x: 30, y: 5 })).toBe(null) // below the curve
+  })
+
+  it('snaps dragged objects to shape anchors (line endpoints)', () => {
+    const e = make([
+      { id: 'l', kind: 'line', x: 0, y: 0, w: 40, h: 40 },
+      { id: 'b', kind: 'rect', x: 80, y: 80, w: 10, h: 10 },
+    ])
+    // drag rect's top-left corner toward the line endpoint at (0,0)... (40,40) end is nearer
+    e.pointerDown(e.worldToScreen({ x: 85, y: 85 }))
+    // move so bbox edge (x=80+dx) lands at 40 (line's (1,1) endpoint x)
+    e.pointerMove(e.worldToScreen({ x: 85 - 41, y: 85 }))
+    expect(e.dragDelta?.x).toBe(-40) // snapped: 80-40=40 = endpoint x
+  })
+
+  it('serializes shape and extended style fields', () => {
+    const doc = createDocument({ units: 'mm', origin: 'top-left' })
+    const withShape = {
+      ...doc,
+      objects: [
+        {
+          id: 'c',
+          kind: 'curve',
+          x: 1,
+          y: 2,
+          w: 30,
+          h: 20,
+          shape: { points: [{ fx: 0, fy: 0.5 }, { fx: 0.5, fy: 0 }, { fx: 1, fy: 0.5 }] },
+          style: { stroke: '#333', width: 2.5, dash: [2, 2], capStart: 'dot' as const, capEnd: 'arrow' as const },
+        },
+        { id: 'a', kind: 'arc', x: 0, y: 0, w: 40, h: 40, shape: { a0: 0, a1: 270 } },
+      ],
+    }
+    const out = deserializeDoc(serializeDoc(withShape))
+    expect(out).toEqual(withShape)
   })
 })
 

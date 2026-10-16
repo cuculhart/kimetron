@@ -6,10 +6,12 @@ export type {
   EdgeRoute,
   EdgeStyle,
   GridConfig,
+  ObjectShape,
   Origin,
   Port,
   Pt,
   Rect,
+  ShapePoint,
   Unit,
   Viewport,
   WorldConfig,
@@ -42,8 +44,18 @@ export {
   edgeEndpoints,
 } from './doc'
 export type { ZOrder } from './doc'
-export { edgeGeom, geomPolyline, distToGeom } from './edge'
+export { edgeGeom, geomPolyline, distToGeom, distToSegment } from './edge'
 export type { EdgeGeom } from './edge'
+export {
+  isShapeKind,
+  shapeAnchors,
+  arcAngles,
+  arcPoint,
+  catmullRomPolyline,
+  shapePolyline,
+  shapeSnapPoints,
+  hitObject,
+} from './shape'
 export { Engine } from './engine'
 export type { PointerOpts, EngineListener, ResizeDir, Guide } from './engine'
 export const KIMETRON_VERSION = '0.4.0'

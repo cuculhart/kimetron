@@ -37,6 +37,33 @@ export interface WorldObjectStyle {
   fill?: string
   /** Border (stroke) color. */
   stroke?: string
+  /** Stroke width in screen px — meaningful for shape kinds. */
+  width?: number
+  /** stroke-dasharray pattern for shape kinds, e.g. [4, 4]. */
+  dash?: number[]
+  /** Start cap for 'line'/'curve' kinds. */
+  capStart?: EdgeMarker
+  /** End cap for 'line'/'curve' kinds. */
+  capEnd?: EdgeMarker
+}
+
+/** A shape anchor as a fraction of the object's bounding box, 0..1 —
+    same normalization as Port, so anchors track resizes. */
+export interface ShapePoint {
+  fx: number
+  fy: number
+}
+
+/** Kind-specific geometry inside the x/y/w/h bounding box. */
+export interface ObjectShape {
+  /** 'line': exactly 2 points — a chord across the box (default:
+      the (0,0)→(1,1) diagonal). 'curve': 2+ anchors — an open
+      Catmull-Rom curve passing through all of them. */
+  points?: ShapePoint[]
+  /** 'arc': start angle in degrees, world space (+x = 0°, CCW). */
+  a0?: number
+  /** 'arc': end angle in degrees. a0 === a1 draws a full ellipse ring. */
+  a1?: number
 }
 
 export interface WorldObject {
@@ -48,6 +75,7 @@ export interface WorldObject {
   h: number
   ports?: Port[]
   style?: WorldObjectStyle
+  shape?: ObjectShape
   data?: unknown
 }
 

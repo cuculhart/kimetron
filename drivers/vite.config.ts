@@ -13,6 +13,7 @@ export default defineConfig({
         'plesfeda/index.html',
         'sethera/index.html',
         'plan/index.html',
+        'game/index.html',
       ],
     },
   },

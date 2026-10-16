@@ -136,34 +136,68 @@ export function rectPoly(r: Rect): Pt[] {
   ]
 }
 
-/** Convex-polygon intersection via the separating-axis test.
-    Edge-only contact does NOT count as an overlap (consistent with
-    rectsIntersect's strict inequalities). */
-export function polysIntersect(a: Pt[], b: Pt[]): boolean {
+function orient(a: Pt, b: Pt, c: Pt): number {
+  return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
+}
+
+function onSeg(a: Pt, b: Pt, p: Pt, eps: number): boolean {
+  return (
+    Math.abs(orient(a, b, p)) <= eps &&
+    p.x >= Math.min(a.x, b.x) - eps &&
+    p.x <= Math.max(a.x, b.x) + eps &&
+    p.y >= Math.min(a.y, b.y) - eps &&
+    p.y <= Math.max(a.y, b.y) + eps
+  )
+}
+
+/** Proper segment intersection — the interiors cross. Touching at
+    endpoints or collinear overlap does NOT count. */
+export function segsProperlyIntersect(a1: Pt, a2: Pt, b1: Pt, b2: Pt): boolean {
+  const d1 = orient(b1, b2, a1)
+  const d2 = orient(b1, b2, a2)
+  const d3 = orient(a1, a2, b1)
+  const d4 = orient(a1, a2, b2)
+  return d1 * d2 < 0 && d3 * d4 < 0
+}
+
+/** Even-odd point-in-polygon test. `strict` excludes boundary points
+    (they count as inside when strict is false). */
+export function pointInPoly(p: Pt, poly: Pt[], strict = false): boolean {
   const EPS = 1e-9
-  for (const poly of [a, b]) {
+  if (strict) {
     for (let i = 0; i < poly.length; i++) {
-      const p1 = poly[i]
-      const p2 = poly[(i + 1) % poly.length]
-      // edge normal
-      const nx = p2.y - p1.y
-      const ny = p1.x - p2.x
-      let minA = Infinity
-      let maxA = -Infinity
-      for (const p of a) {
-        const d = p.x * nx + p.y * ny
-        if (d < minA) minA = d
-        if (d > maxA) maxA = d
-      }
-      let minB = Infinity
-      let maxB = -Infinity
-      for (const p of b) {
-        const d = p.x * nx + p.y * ny
-        if (d < minB) minB = d
-        if (d > maxB) maxB = d
-      }
-      if (maxA - minB <= EPS || maxB - minA <= EPS) return false
+      if (onSeg(poly[i], poly[(i + 1) % poly.length], p, EPS)) return false
     }
   }
-  return true
+  let inside = false
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[i]
+    const b = poly[j]
+    if (a.y > p.y !== b.y > p.y && p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x) {
+      inside = !inside
+    }
+  }
+  return inside
+}
+
+/** General polygon intersection (convex OR concave): true when the
+    polygons share interior — a proper edge crossing, or a vertex /
+    edge-midpoint of one lying strictly inside the other (the midpoint
+    check catches a chord that touches the boundary at both ends).
+    Edge-only contact does NOT count as an overlap. */
+export function polysIntersect(a: Pt[], b: Pt[]): boolean {
+  for (let i = 0; i < a.length; i++) {
+    const a1 = a[i]
+    const a2 = a[(i + 1) % a.length]
+    for (let j = 0; j < b.length; j++) {
+      if (segsProperlyIntersect(a1, a2, b[j], b[(j + 1) % b.length])) return true
+    }
+  }
+  const interior = (outer: Pt[], inner: Pt[]): boolean =>
+    inner.some((p, i) => {
+      if (pointInPoly(p, outer, true)) return true
+      const q = inner[(i + 1) % inner.length]
+      return pointInPoly({ x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 }, outer, true)
+    })
+  return interior(a, b) || interior(b, a)
 }

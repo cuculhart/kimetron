@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `@kimetron/core`: `kind:'polygon'` — `shape.points` interpreted as a
+  closed polygon (normalized anchors, ≥3 points). Polygon hit test
+  (interior, concave-aware), vertex snap targets, `footprintOf` for the
+  collision footprint; `polysIntersect` generalized to concave loops
+  via proper edge crossing + containment (edge-touching still legal)
+- `@kimetron/core`: `objectsIn(rect, exclude?)` — footprint query
+  that returns non-solid objects too (`collisions` is its solid-only
+  view). `canPlace(o, rect?)` — pure geometry/policy check honoring
+  `canOverlap`; `tryMove(id, dx, dy)` — programmatic move through the
+  collision policy (rejects on lock/missing or illegal overlap when
+  `collisionMode` isn't `'none'`)
+- `@kimetron/dom`: `polygon` renders as a closed path
+- `drivers/game` — game spike: two 300 mm units wander a building via
+  `tryMove` (walls/rocks block, the gate zone is the only way out,
+  units can't stack), locked polygon rocks, patterned pond, adjacency
+  rings + effect link when units come within range
+
 ## [0.9.0] - 2026-10-16
 
 ### Added

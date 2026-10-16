@@ -870,6 +870,89 @@ describe('rotation', () => {
   })
 })
 
+describe('objectsIn / canPlace / tryMove / polygon', () => {
+  function make(objs: WorldObject[]) {
+    const e = new Engine(
+      { units: 'mm', origin: 'bottom-left', grid: { size: 10, snap: true } },
+      objs,
+    )
+    e.viewport = { x: 0, y: 500, zoom: 1 }
+    return e
+  }
+  const wall = { id: 'w', kind: 'wall', x: 100, y: 0, w: 120, h: 20, solid: true }
+  const rock = {
+    id: 'rock', kind: 'polygon', x: 300, y: 0, w: 100, h: 100, solid: true, locked: true,
+    // L-shaped concave polygon in normalized anchors
+    shape: {
+      points: [
+        { fx: 0, fy: 0 }, { fx: 0.6, fy: 0 }, { fx: 0.6, fy: 0.4 },
+        { fx: 1, fy: 0.4 }, { fx: 1, fy: 1 }, { fx: 0, fy: 1 },
+      ],
+    },
+    style: { fill: '#888' },
+  }
+  const unit = { id: 'u', kind: 'unit', x: 0, y: 0, w: 30, h: 30, solid: true }
+
+  it('objectsIn returns non-solid objects too; collisions stays solid-only', () => {
+    const paper = { id: 'p', kind: 'note', x: 105, y: 5, w: 30, h: 10 }
+    const e = make([wall, paper])
+    expect(e.objectsIn({ x: 100, y: 0, w: 60, h: 30 }).map((o) => o.id)).toEqual(['w', 'p'])
+    expect(e.collisions({ x: 100, y: 0, w: 60, h: 30 }).map((o) => o.id)).toEqual(['w'])
+  })
+
+  it('tryMove respects the collision policy and locks', () => {
+    const e = make([wall, unit, rock])
+    e.collisionMode = 'reject'
+    expect(e.tryMove('u', 100, 0)).toBe(false) // would land on the wall
+    expect(e.tryMove('u', 50, 30)).toBe(true) // free space commits
+    expect(e.doc.objects[1].x).toBe(50)
+    expect(e.tryMove('rock', 10, 10)).toBe(false) // locked never moves
+    const free = make([wall, unit])
+    expect(free.tryMove('u', 100, 0)).toBe(true) // collisionMode none → free
+  })
+
+  it('canPlace is a pure solid-policy check', () => {
+    const e = make([wall, unit])
+    expect(e.canPlace(unit, { x: 100, y: 0, w: 30, h: 30 })).toBe(false) // on the wall
+    expect(e.canPlace(unit, { x: 60, y: 0, w: 30, h: 30 })).toBe(true) // abutting
+    expect(e.canPlace(unit)).toBe(true) // its own current spot
+  })
+
+  it('polygon hit test: interior fills, concave notch does not', () => {
+    const e = make([rock])
+    // the notch cut out of the L is at fx 0.6-1.0 / fy 0-0.4 → world (360-400, 0-40)
+    expect(e.objectAt(e.worldToScreen({ x: 320, y: 60 }))?.id).toBe('rock') // inside body
+    expect(e.objectAt(e.worldToScreen({ x: 390, y: 10 }))).toBeNull() // inside the notch
+  })
+
+  it('polygon collision uses the real outline, not the bbox', () => {
+    const e = make([rock, unit])
+    e.collisionMode = 'reject'
+    // unit dragged into the notch area — no actual overlap with the L
+    expect(e.tryMove('u', 370, 5)).toBe(true)
+    // dragged into the solid body — rejected
+    const e2 = make([rock, { ...unit, id: 'u2' }])
+    e2.collisionMode = 'reject'
+    expect(e2.tryMove('u2', 330, 50)).toBe(false)
+  })
+
+  it('concave polygon vs concave polygon detects real overlap', () => {
+    const e = make([rock, { ...rock, id: 'rock2', locked: false }])
+    e.collisionMode = 'reject'
+    // slide rock2 left so its body enters rock's notch — still an overlap
+    expect(e.tryMove('rock2', -40, 0)).toBe(false)
+    // sliding it far right is free
+    expect(e.tryMove('rock2', 200, 0)).toBe(true)
+  })
+
+  it('serializes polygon shape points', () => {
+    const doc = createDocument({ units: 'mm' })
+    const d = { ...doc, objects: [rock as WorldObject] }
+    const out = deserializeDoc(serializeDoc(d))
+    expect(out.objects[0].shape?.points?.length).toBe(6)
+  })
+})
+
 describe('doc serialize', () => {
   it('roundtrips units/origin/grid/objects', () => {
     const doc = createDocument({ units: 'inch', origin: 'top-left', grid: { size: 0.5, snap: false } })

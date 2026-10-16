@@ -26,7 +26,7 @@ import {
   screenToWorld,
   worldToScreen,
 } from './geometry'
-import { hitObject, shapeSnapPoints } from './shape'
+import { footprintOf, hitObject, shapeSnapPoints } from './shape'
 import type { Doc, Edge, EdgeEndpoint, EdgeRoute, GridConfig, Origin, Pt, Rect, Unit, Viewport, WorldConfig, WorldObject } from './types'
 import { formatScale, unitToPx } from './units'
 
@@ -363,26 +363,58 @@ export class Engine {
     return null
   }
 
-  /** Solid objects whose footprint intersects `rect` — edge-touching
-      is not an overlap. Rotated objects use their OBB. */
-  collisions(rect: Rect, exclude?: ReadonlySet<string>): WorldObject[] {
+  /** All objects whose footprint intersects `rect` — solid or not.
+      Rotated objects use their OBB, polygons their vertex loop.
+      Edge-touching is not an overlap. */
+  objectsIn(rect: Rect, exclude?: ReadonlySet<string>): WorldObject[] {
     const poly = rectPoly(rect)
     return this.doc.objects.filter(
-      (o) =>
-        o.solid === true && !exclude?.has(o.id) && polysIntersect(poly, obbOf(o)),
+      (o) => !exclude?.has(o.id) && polysIntersect(poly, footprintOf(o)),
     )
+  }
+
+  /** Solid objects whose footprint intersects `rect` — the solid-only
+      view of `objectsIn`. */
+  collisions(rect: Rect, exclude?: ReadonlySet<string>): WorldObject[] {
+    return this.objectsIn(rect, exclude).filter((o) => o.solid === true)
+  }
+
+  /** Would `o` fit at `rect` (default: its current position) without
+      illegally overlapping solids? Honors `canOverlap`, ignores
+      `collisionMode` — a pure geometry/policy check. */
+  canPlace(o: WorldObject, rect?: Rect): boolean {
+    const mover = rect ? { ...o, ...rect } : o
+    return !this.blockedBySolid(mover, new Set([o.id]))
+  }
+
+  /** Programmatic move through the collision policy — like a drag
+      commit without the gesture. Returns false when `collisionMode`
+      isn't 'none' and the target spot is illegally occupied, or when
+      the object is locked/missing. */
+  tryMove(id: string, dx: number, dy: number): boolean {
+    const o = this.doc.objects.find((o) => o.id === id)
+    if (!o || o.locked) return false
+    if (
+      this.collisionMode !== 'none' &&
+      !this.canPlace(o, { x: o.x + dx, y: o.y + dy, w: o.w, h: o.h })
+    ) {
+      return false
+    }
+    this.doc = moveObjects(this.doc, [id], dx, dy)
+    this.emitDoc()
+    return true
   }
 
   /** Would `mover` (at the position/rotation it carries) illegally
       overlap a non-excluded solid? */
   private blockedBySolid(mover: WorldObject, exclude: ReadonlySet<string>): boolean {
     if (!mover.solid) return false
-    const pts = obbOf(mover)
+    const pts = footprintOf(mover)
     return this.doc.objects.some(
       (o) =>
         o.solid === true &&
         !exclude.has(o.id) &&
-        polysIntersect(pts, obbOf(o)) &&
+        polysIntersect(pts, footprintOf(o)) &&
         !this.canOverlap?.(mover, o),
     )
   }
@@ -602,7 +634,7 @@ export class Engine {
       const mq = rectPoly(this.marquee)
       const ids = new Set(
         this.doc.objects
-          .filter((o) => polysIntersect(mq, obbOf(o)))
+          .filter((o) => polysIntersect(mq, footprintOf(o)))
           .map((o) => o.id),
       )
       const groups = new Set(
@@ -770,7 +802,7 @@ export class Engine {
   selectionBounds(): Rect | null {
     const objs = this.doc.objects.filter((o) => this.selectedIds.has(o.id))
     if (objs.length === 0) return null
-    return aabbOf(objs.flatMap((o) => obbOf(o)))
+    return aabbOf(objs.flatMap((o) => footprintOf(o)))
   }
 
   private snapTargets(exclude: Set<string>): { xs: number[]; ys: number[] } {
@@ -783,14 +815,14 @@ export class Engine {
     }
     for (const o of this.doc.objects) {
       if (exclude.has(o.id)) continue
-      const corners = obbOf(o)
+      const corners = footprintOf(o)
       for (const pt of corners) {
         xs.push(pt.x)
         ys.push(pt.y)
       }
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < corners.length; i++) {
         const a = corners[i]
-        const b = corners[(i + 1) % 4]
+        const b = corners[(i + 1) % corners.length]
         xs.push((a.x + b.x) / 2)
         ys.push((a.y + b.y) / 2)
       }

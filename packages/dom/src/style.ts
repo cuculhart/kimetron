@@ -329,11 +329,15 @@ export function shapePathD(engine: Engine, o: WorldObject): string | null {
   }
   const fmt = (p: Pt) => `${p.x} ${p.y}`
 
-  if (o.kind === 'line' || o.kind === 'curve') {
+  if (o.kind === 'line' || o.kind === 'curve' || o.kind === 'polygon') {
     const pts = shapeAnchors(o).map((a) =>
       toLocal({ x: eff.x + a.fx * eff.w, y: eff.y + a.fy * eff.h }),
     )
     if (pts.length < 2) return null
+    if (o.kind === 'polygon') {
+      if (pts.length < 3) return null
+      return `M ${fmt(pts[0])} ${pts.slice(1).map((p) => `L ${fmt(p)}`).join(' ')} Z`
+    }
     if (o.kind === 'curve' && pts.length > 2) {
       let d = `M ${fmt(pts[0])}`
       for (let i = 0; i < pts.length - 1; i++) {
@@ -395,7 +399,7 @@ export function shapeAttrs(engine: Engine, o: WorldObject): ShapeAttrs | null {
   return {
     d,
     fill:
-      o.kind === 'ellipse' || o.kind === 'arc'
+      o.kind === 'ellipse' || o.kind === 'arc' || o.kind === 'polygon'
         ? (o.style?.fill ?? 'none')
         : 'none',
     stroke: sel ? SEL_COLOR : (o.style?.stroke ?? SHAPE_LINE),

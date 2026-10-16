@@ -1,10 +1,16 @@
 import { distToSegment } from './edge'
-import { invRotPt, objCenter, pointInRect, rectOf, rotPt } from './geometry'
+import { invRotPt, objCenter, objPoint, obbOf, pointInPoly, pointInRect, rectOf, rotPt } from './geometry'
 import type { Pt, WorldObject } from './types'
 
 /** Kinds the engine interprets as non-rectangular outlines. */
 export function isShapeKind(kind: string): boolean {
-  return kind === 'line' || kind === 'curve' || kind === 'ellipse' || kind === 'arc'
+  return (
+    kind === 'line' ||
+    kind === 'curve' ||
+    kind === 'ellipse' ||
+    kind === 'arc' ||
+    kind === 'polygon'
+  )
 }
 
 const DEFAULT_CHORD = [
@@ -12,14 +18,15 @@ const DEFAULT_CHORD = [
   { fx: 1, fy: 1 },
 ]
 
-/** Normalized stroke anchors of a 'line'/'curve' object (bbox fractions). */
+/** Normalized stroke anchors of a 'line'/'curve'/'polygon' object
+    (bbox fractions). 'polygon' anchors describe a CLOSED outline. */
 export function shapeAnchors(o: WorldObject): { fx: number; fy: number }[] {
   if (o.kind === 'line') {
     return o.shape?.points && o.shape.points.length === 2
       ? o.shape.points
       : DEFAULT_CHORD
   }
-  if (o.kind === 'curve') return o.shape?.points ?? []
+  if (o.kind === 'curve' || o.kind === 'polygon') return o.shape?.points ?? []
   return []
 }
 
@@ -80,6 +87,7 @@ export function shapePolyline(o: WorldObject): Pt[] {
   } else {
     const anchors = shapeAnchors(o).map((p) => fxToWorld(o, p.fx, p.fy))
     pts = o.kind === 'curve' ? catmullRomPolyline(anchors) : anchors
+    if (o.kind === 'polygon' && pts.length > 0) pts = [...pts, pts[0]] // closed loop
   }
   if (o.rot) {
     const c = objCenter(o)
@@ -104,6 +112,15 @@ export function shapeSnapPoints(o: WorldObject): Pt[] {
   return pts
 }
 
+/** The object's occupied outline as world-space polygon points —
+    `obbOf` for box-like kinds, the actual vertex loop for 'polygon'. */
+export function footprintOf(o: WorldObject): Pt[] {
+  if (o.kind === 'polygon' && o.shape?.points && o.shape.points.length >= 3) {
+    return o.shape.points.map((p) => objPoint(o, p.fx, p.fy))
+  }
+  return obbOf(o)
+}
+
 function distToPolyline(p: Pt, pts: Pt[]): number {
   let best = Infinity
   for (let i = 0; i + 1 < pts.length; i++) {
@@ -118,6 +135,14 @@ function distToPolyline(p: Pt, pts: Pt[]): number {
 export function hitObject(o: WorldObject, p: Pt, tol: number): boolean {
   const lp = o.rot ? invRotPt(p, objCenter(o), o.rot) : p
   const lo = o.rot ? { ...o, rot: 0 } : o
+  if (o.kind === 'polygon') {
+    const pts = shapePolyline(lo) // closed loop (first point repeated)
+    if (pts.length < 4) return pointInRect(lp, rectOf(o))
+    // filled → interior hits; unfilled → the outline band hits
+    return o.style?.fill !== undefined
+      ? pointInPoly(lp, pts.slice(0, -1))
+      : distToPolyline(lp, pts) <= tol
+  }
   if (o.kind === 'line' || o.kind === 'curve' || o.kind === 'arc') {
     const pts = shapePolyline(lo)
     return pts.length >= 2 && distToPolyline(lp, pts) <= tol

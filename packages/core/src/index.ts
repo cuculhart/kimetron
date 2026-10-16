@@ -37,6 +37,8 @@ export {
   aabbOf,
   rectPoly,
   polysIntersect,
+  segsProperlyIntersect,
+  pointInPoly,
 } from './geometry'
 export {
   createDocument,
@@ -67,6 +69,7 @@ export {
   shapePolyline,
   shapeSnapPoints,
   hitObject,
+  footprintOf,
 } from './shape'
 export { Engine } from './engine'
 export type { PointerOpts, EngineListener, ResizeDir, Guide } from './engine'

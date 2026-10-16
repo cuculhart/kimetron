@@ -6,15 +6,15 @@ const engine = new Engine({
   origin: 'bottom-left',
   grid: { size: 10, snap: true },
 })
-const ports4 = (w: number, h: number) => [
-  { id: 'l', x: 0, y: h / 2 },
-  { id: 't', x: w / 2, y: h },
-  { id: 'r', x: w, y: h / 2 },
-  { id: 'b', x: w / 2, y: 0 },
+const ports4 = () => [
+  { id: 'l', fx: 0, fy: 0.5 },
+  { id: 't', fx: 0.5, fy: 1 },
+  { id: 'r', fx: 1, fy: 0.5 },
+  { id: 'b', fx: 0.5, fy: 0 },
 ]
 
-engine.addObject({ id: 'vanilla', kind: 'rect', x: 20, y: 20, w: 60, h: 40, ports: ports4(60, 40) })
-engine.addObject({ id: 'no-react', kind: 'rect', x: 100, y: 80, w: 50, h: 30, ports: ports4(50, 30) })
+engine.addObject({ id: 'vanilla', kind: 'rect', x: 20, y: 20, w: 60, h: 40, ports: ports4() })
+engine.addObject({ id: 'no-react', kind: 'rect', x: 100, y: 80, w: 50, h: 30, ports: ports4() })
 
 const el = document.getElementById('canvas') as HTMLElement
 createRenderer(el, { engine })

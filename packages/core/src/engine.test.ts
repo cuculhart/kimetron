@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   createDocument,
   deserializeDoc,
+  endpointPos,
   Engine,
   formatLength,
   formatScale,
@@ -296,8 +297,8 @@ describe('history edge cases', () => {
 describe('edges and ports', () => {
   const cfg = { units: 'mm' as const, origin: 'bottom-left' as const, grid: { size: 10, snap: true } }
   const two = [
-    { id: 'a', kind: 'rect', x: 0, y: 0, w: 40, h: 30, ports: [{ id: 'r', x: 40, y: 15 }] },
-    { id: 'b', kind: 'rect', x: 100, y: 0, w: 40, h: 30, ports: [{ id: 'l', x: 0, y: 15 }] },
+    { id: 'a', kind: 'rect', x: 0, y: 0, w: 40, h: 30, ports: [{ id: 'r', fx: 1, fy: 0.5 }] },
+    { id: 'b', kind: 'rect', x: 100, y: 0, w: 40, h: 30, ports: [{ id: 'l', fx: 0, fy: 0.5 }] },
   ]
   const make = () => {
     const e = new Engine(cfg, two)
@@ -353,6 +354,20 @@ describe('edges and ports', () => {
     e.setSelection(['b'])
     e.removeSelected()
     expect(e.doc.edges).toHaveLength(0)
+  })
+
+  it('keeps ports on the edges after resize (normalized fractions)', () => {
+    const e = make()
+    const a = () => e.doc.objects.find((o) => o.id === 'a')!
+    // shrink 'a' from w=40 to w=10 via the min-x edge
+    e.startResize({ x: 0, y: 0 }, 'a', { x: -1, y: 0 })
+    e.pointerMove(e.worldToScreen({ x: 30, y: 15 }))
+    e.pointerUp()
+    const o = a()
+    expect(o.w).toBe(10)
+    // 'r' port at fx=1 must sit on the right edge, not inside the rect
+    const pos = endpointPos(e.doc, { obj: 'a', port: 'r' })
+    expect(pos?.x).toBeCloseTo(o.x + o.w)
   })
 
   it('serializes edges and reads v1 docs without them', () => {

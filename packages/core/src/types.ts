@@ -26,10 +26,10 @@ export interface Rect {
 
 export interface Port {
   id: string
-  /** Offset from the object's anchor corner (o.x, o.y), in world units.
-      Origin-independent. Apps move ports on resize if needed. */
-  x: number
-  y: number
+  /** Position as a fraction of the object's size, 0..1.
+      World position = (o.x + fx*o.w, o.y + fy*o.h) — tracks resizes. */
+  fx: number
+  fy: number
 }
 
 export interface WorldObject {

@@ -107,10 +107,10 @@ export function screenDirToWorld(dir: string, origin: Origin): ResizeDir {
 /** Screen-space positions of an object's ports. */
 export function portPoints(
   engine: Engine,
-  o: { id: string; x: number; y: number; ports?: Port[] },
+  o: { id: string; x: number; y: number; w: number; h: number; ports?: Port[] },
 ): { port: Port; x: number; y: number }[] {
   return (o.ports ?? []).map((p) => {
-    const s = engine.worldToScreen({ x: o.x + p.x, y: o.y + p.y })
+    const s = engine.worldToScreen({ x: o.x + p.fx * o.w, y: o.y + p.fy * o.h })
     return { port: p, x: s.x, y: s.y }
   })
 }

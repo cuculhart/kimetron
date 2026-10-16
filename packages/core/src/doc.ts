@@ -57,7 +57,7 @@ export function endpointPos(doc: Doc, ep: { obj: string; port?: string }): Pt | 
   if (!o) return null
   if (ep.port) {
     const p = o.ports?.find((p) => p.id === ep.port)
-    if (p) return { x: o.x + p.x, y: o.y + p.y }
+    if (p) return { x: o.x + p.fx * o.w, y: o.y + p.fy * o.h }
   }
   return { x: o.x + o.w / 2, y: o.y + o.h / 2 }
 }
@@ -140,8 +140,8 @@ export function deserializeDoc(json: string): Doc {
         ? {
             ports: o.ports.map((p) => ({
               id: String(p.id),
-              x: Number(p.x) || 0,
-              y: Number(p.y) || 0,
+              fx: Number(p.fx) || 0,
+              fy: Number(p.fy) || 0,
             })),
           }
         : {}),

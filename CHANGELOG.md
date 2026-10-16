@@ -9,8 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `@kimetron/core`: edges and ports — `Doc.edges`, `Port` (object-local
-  world-unit offsets), `Edge` as pure reference data (from/to endpoints,
+- `@kimetron/core`: edges and ports — `Doc.edges`, `Port` (normalized
+  `fx`/`fy` fractions of object size, tracking resizes automatically),
+  `Edge` as pure reference data (from/to endpoints,
   `route`, `label`); `schemaVersion: 2` with tolerant reading of v1 docs;
   `removeObjects` prunes referencing edges (no orphans)
 - `@kimetron/core`: edge routes — straight / orthogonal / bezier geometry

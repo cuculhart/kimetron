@@ -301,7 +301,7 @@ export class Engine {
     let bd = tol
     for (const o of this.doc.objects) {
       for (const p of o.ports ?? []) {
-        const d = Math.hypot(o.x + p.x - w.x, o.y + p.y - w.y)
+        const d = Math.hypot(o.x + p.fx * o.w - w.x, o.y + p.fy * o.h - w.y)
         if (d <= bd) {
           bd = d
           best = { obj: o.id, port: p.id }

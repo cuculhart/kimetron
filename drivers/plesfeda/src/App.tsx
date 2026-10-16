@@ -1,0 +1,91 @@
+import { useEffect } from 'react'
+import { formatLength } from '@kimetron/core'
+import type { WorldObject } from '@kimetron/core'
+import { IsleCanvas, useEngine, useEngineVersion } from '@kimetron/react'
+import { layoutTasks, SAMPLE_TASKS } from './model'
+import type { TaskData } from './model'
+import '../../demo/src/styles.css'
+
+export function App() {
+  const engine = useEngine({
+    units: 'mm',
+    origin: 'top-left',
+    grid: { size: 5, snap: true },
+  })
+  useEngineVersion(engine)
+
+  useEffect(() => {
+    const { objects, edges } = layoutTasks(SAMPLE_TASKS)
+    engine.setDoc({ ...engine.doc, objects, edges })
+    engine.setSelection([])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [engine])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const mod = e.ctrlKey || e.metaKey
+      if (e.key === 'Delete' || e.key === 'Backspace') engine.removeSelected()
+      else if (mod && e.key.toLowerCase() === 'z' && e.shiftKey) { e.preventDefault(); engine.redo() }
+      else if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); engine.undo() }
+      else if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); engine.redo() }
+      else if (mod && e.key.toLowerCase() === 'd') { e.preventDefault(); engine.duplicateSelected() }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [engine])
+
+  const relayout = () => {
+    const { objects, edges } = layoutTasks(SAMPLE_TASKS)
+    const live = new Map(engine.doc.objects.map((o) => [o.id, o]))
+    engine.setDoc({
+      ...engine.doc,
+      // keep objects the user added; re-derive positions for task nodes
+      objects: engine.doc.objects.map((o) => {
+        const fresh = objects.find((f) => f.id === o.id)
+        return fresh ? { ...o, x: fresh.x, y: fresh.y } : o
+      }).concat(objects.filter((f) => !live.has(f.id))),
+      edges,
+    })
+  }
+
+  const { doc } = engine
+  const u = doc.units
+
+  return (
+    <div className="app">
+      <header className="bar">
+        <strong><a href="../" style={{ color: 'inherit', textDecoration: 'none' }}>Kimetron Isle</a></strong>
+        <span className="sep" />
+        <span className="hint">plesfeda-style driver (spike)</span>
+        <button onClick={relayout}>relayout</button>
+        <button onClick={() => engine.undo()} disabled={!engine.canUndo}>undo</button>
+        <button onClick={() => engine.redo()} disabled={!engine.canRedo}>redo</button>
+      </header>
+      <IsleCanvas
+        engine={engine}
+        style={{ flex: 1 }}
+        renderObject={(o: WorldObject) => {
+          const d = o.data as TaskData | undefined
+          return (
+            <div className="obj-label">
+              <b>{d ? `${d.wbs} ${d.name}` : o.id}</b>
+              {d && <span>{d.effort}d</span>}
+            </div>
+          )
+        }}
+      />
+      <footer className="bar">
+        <span>scale {engine.scaleText()}</span>
+        <span>
+          cursor ({formatLength(engine.cursorWorld.x, u)},{' '}
+          {formatLength(engine.cursorWorld.y, u)})
+        </span>
+        <span>selected {engine.selectedIds.size}</span>
+        <span>tasks {doc.objects.length}</span>
+        <span>edges {doc.edges.length}</span>
+        <span className="sep" />
+        <span className="hint">WBS numbers & layout are derived / dep edges follow nodes / drag to move (snaps to grid)</span>
+      </footer>
+    </div>
+  )
+}

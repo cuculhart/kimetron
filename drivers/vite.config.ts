@@ -6,7 +6,12 @@ export default defineConfig({
   plugins: [react()],
   build: {
     rollupOptions: {
-      input: ['index.html', 'vanilla.html'],
+      input: [
+        'index.html',
+        'demo/index.html',
+        'demo/vanilla.html',
+        'plesfeda/index.html',
+      ],
     },
   },
 })

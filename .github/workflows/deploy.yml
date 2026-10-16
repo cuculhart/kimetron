@@ -24,11 +24,11 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run build -w demo
+      - run: npm run build -w kimetron-drivers
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: drivers/demo/dist
+          path: drivers/dist
 
   deploy:
     needs: build

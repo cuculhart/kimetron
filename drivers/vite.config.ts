@@ -11,6 +11,7 @@ export default defineConfig({
         'demo/index.html',
         'demo/vanilla.html',
         'plesfeda/index.html',
+        'sethera/index.html',
       ],
     },
   },

@@ -93,12 +93,27 @@ export function canOverlap(a: WorldObject, b: WorldObject): boolean {
   return k[0] === 'door' && (k[1] === 'unit' || k[1] === 'wall')
 }
 
+/** Inner envelope of the outer walls (inside faces). */
+const INNER = { x: 320, y: 320, w: 3760, h: 2760 }
+const GATE_CENTER: Pt = { x: 1800, y: 260 }
+
 /** Random wander target inside the inner envelope. */
 export function pickWaypoint(): Pt {
   return {
     x: 420 + Math.random() * 3500,
     y: 420 + Math.random() * 2500,
   }
+}
+
+/** A unit outside the building heads for the gate to re-enter;
+    every other waypoint is beyond a wall, which is why it otherwise
+    presses against the wall forever. */
+function targetFor(c: Pt, wp: Pt | undefined): Pt {
+  const outside =
+    c.x < INNER.x || c.x > INNER.x + INNER.w || c.y < INNER.y || c.y > INNER.y + INNER.h
+  if (outside) return GATE_CENTER
+  if (!wp || Math.hypot(wp.x - c.x, wp.y - c.y) < ARRIVE) return pickWaypoint()
+  return wp
 }
 
 const STEP = 60 // mm per tick — thinner than the 120 mm walls, no tunneling
@@ -111,10 +126,7 @@ export function stepUnits(engine: Engine, wps: Record<string, Pt>): void {
     const o = engine.doc.objects.find((o) => o.id === id)
     if (!o) continue
     const c = { x: o.x + o.w / 2, y: o.y + o.h / 2 }
-    let wp = wps[id]
-    if (!wp || Math.hypot(wp.x - c.x, wp.y - c.y) < ARRIVE) {
-      wp = wps[id] = pickWaypoint()
-    }
+    const wp = (wps[id] = targetFor(c, wps[id]))
     const dx = wp.x - c.x
     const dy = wp.y - c.y
     const d = Math.hypot(dx, dy) || 1

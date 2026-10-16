@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-10-16
+
+### Added
+
+- `@kimetron/dom`: `rulerTicks(engine, axis, spanPx)` — world-unit
+  ruler tick marks with automatic "nice" step selection and major
+  labels (CAD ruler overlay primitive)
+- `drivers/plan`: canvas-edge rulers (top/left), `dim` kind objects
+  (extension lines, double-arrow dimension line, live mm text,
+  own-span measurement; spawn matched to the selection's span via
+  +H寸法/+V寸法), wall core lines (壁芯 — dash-dot on the long axis;
+  dims snap onto cores via existing center snap), and architectural
+  area readouts derived from the wall layout — 敷地 (site) /
+  建築 (outer-face envelope) / 床壁芯 (core-line) / 床内法
+  (inner-face), minus interior partitions; wall area nets out door
+  openings
+
 ## [0.7.0] - 2026-10-16
 
 ### Added

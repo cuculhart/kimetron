@@ -60,4 +60,4 @@ export {
 } from './shape'
 export { Engine } from './engine'
 export type { PointerOpts, EngineListener, ResizeDir, Guide } from './engine'
-export const KIMETRON_VERSION = '0.5.0'
+export const KIMETRON_VERSION = '0.6.0'

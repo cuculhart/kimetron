@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { formatLength } from '@kimetron/core'
-import type { WorldObject } from '@kimetron/core'
+import type { EdgeMarker, EdgeRoute, WorldObject } from '@kimetron/core'
 import { IsleCanvas, useEngine, useEngineVersion } from '@kimetron/react'
 import { layoutTasks, SAMPLE_TASKS } from './model'
 import type { Orientation, TaskData } from './model'
@@ -60,6 +60,12 @@ export function App() {
 
   const { doc } = engine
   const u = doc.units
+  const selEdge =
+    engine.selectedIds.size === 1
+      ? doc.edges.find((e) => engine.selectedIds.has(e.id))
+      : undefined
+  const ROUTES: EdgeRoute[] = ['straight', 'orthogonal', 'smoothstep', 'bezier']
+  const MARKERS: (EdgeMarker | '')[] = ['', 'arrow', 'dot']
 
   return (
     <div className="app">
@@ -73,6 +79,83 @@ export function App() {
         <button onClick={relayout}>relayout</button>
         <button onClick={() => engine.undo()} disabled={!engine.canUndo}>undo</button>
         <button onClick={() => engine.redo()} disabled={!engine.canRedo}>redo</button>
+        {selEdge && (
+          <>
+            <span className="sep" />
+            <label>
+              route
+              <select
+                value={selEdge.route ?? 'straight'}
+                onChange={(e) => engine.updateEdge(selEdge.id, { route: e.target.value as EdgeRoute })}
+              >
+                {ROUTES.map((v) => <option key={v}>{v}</option>)}
+              </select>
+            </label>
+            <label>
+              color
+              <input
+                type="color"
+                value={selEdge.style?.color ?? '#a39e93'}
+                onChange={(e) =>
+                  engine.updateEdge(selEdge.id, { style: { ...selEdge.style, color: e.target.value } })
+                }
+              />
+            </label>
+            <label>
+              width
+              <select
+                value={String(selEdge.style?.width ?? 1.5)}
+                onChange={(e) =>
+                  engine.updateEdge(selEdge.id, {
+                    style: { ...selEdge.style, width: Number(e.target.value) },
+                  })
+                }
+              >
+                {[1, 1.5, 1.8, 2.5, 3, 4].map((v) => (
+                  <option key={v} value={v}>{v}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={!!selEdge.style?.dash}
+                onChange={(e) =>
+                  engine.updateEdge(selEdge.id, {
+                    style: { ...selEdge.style, dash: e.target.checked ? [4, 4] : undefined },
+                  })
+                }
+              />
+              dash
+            </label>
+            <label>
+              start
+              <select
+                value={selEdge.markerStart ?? ''}
+                onChange={(e) =>
+                  engine.updateEdge(selEdge.id, {
+                    markerStart: (e.target.value || undefined) as EdgeMarker | undefined,
+                  })
+                }
+              >
+                {MARKERS.map((v) => <option key={v} value={v}>{v || 'none'}</option>)}
+              </select>
+            </label>
+            <label>
+              end
+              <select
+                value={selEdge.markerEnd ?? ''}
+                onChange={(e) =>
+                  engine.updateEdge(selEdge.id, {
+                    markerEnd: (e.target.value || undefined) as EdgeMarker | undefined,
+                  })
+                }
+              >
+                {MARKERS.map((v) => <option key={v} value={v}>{v || 'none'}</option>)}
+              </select>
+            </label>
+          </>
+        )}
       </header>
       <IsleCanvas
         engine={engine}

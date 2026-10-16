@@ -255,6 +255,16 @@ export class Engine {
     this.emitSelection()
   }
 
+  /** Patch an edge's presentation fields (route/style/markers/label). One commit. */
+  updateEdge(id: string, patch: Partial<Omit<Edge, 'id' | 'from' | 'to'>>): void {
+    if (!this.doc.edges.some((e) => e.id === id)) return
+    this.doc = {
+      ...this.doc,
+      edges: this.doc.edges.map((e) => (e.id === id ? { ...e, ...patch } : e)),
+    }
+    this.emitDoc()
+  }
+
   /** Move the selected objects in z-order (array order = render order, last = top). */
   reorderSelected(op: ZOrder): void {
     if (this.selectedIds.size === 0) return

@@ -2,12 +2,16 @@ import type { Engine, WorldObject } from '@kimetron/core'
 import { isShapeKind } from '@kimetron/core'
 import { attachInput } from './input'
 import {
+  DOUBLE_INNER,
+  doubleWidths,
   edgeAttrs,
   edgeMarkerDefs,
   handlePoints,
+  hudText,
   injectStyles,
   marqueeFrame,
   objectFrame,
+  pageFrame,
   portPoints,
   routePathD,
   shapeAttrs,
@@ -60,6 +64,11 @@ export function createRenderer(container: HTMLElement, opts: RendererOptions): R
   injectStyles()
   container.classList.add('ki-canvas')
 
+  const pageEl = document.createElement('div')
+  pageEl.className = 'ki-page'
+  pageEl.style.display = 'none'
+  container.appendChild(pageEl)
+
   const edgeSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
   edgeSvg.setAttribute('class', 'ki-edges')
   container.appendChild(edgeSvg)
@@ -76,6 +85,11 @@ export function createRenderer(container: HTMLElement, opts: RendererOptions): R
   const guideLayer = document.createElement('div')
   guideLayer.className = 'ki-guides'
   container.appendChild(guideLayer)
+
+  const hudEl = document.createElement('div')
+  hudEl.className = 'ki-hud'
+  hudEl.style.display = 'none'
+  container.appendChild(hudEl)
 
   const objEls = new Map<string, HTMLElement>()
 
@@ -119,15 +133,38 @@ export function createRenderer(container: HTMLElement, opts: RendererOptions): R
           svg.setAttribute('height', String(f.height))
           const defs = document.createElementNS(SVG_NS, 'defs')
           for (const m of shapeCapMarkerDefs(engine, o)) defs.appendChild(markerEl(m))
+          const kids: SVGElement[] = [defs]
+          if (sa.double) {
+            const w = doubleWidths(sa.strokeWidth)
+            const outer = document.createElementNS(SVG_NS, 'path')
+            outer.setAttribute('d', sa.d)
+            outer.setAttribute('fill', sa.fill ?? 'none')
+            outer.setAttribute('stroke', sa.stroke ?? '')
+            outer.setAttribute('stroke-width', String(w.outer))
+            if (sa.strokeDasharray) outer.setAttribute('stroke-dasharray', sa.strokeDasharray)
+            kids.push(outer)
+            const inner = document.createElementNS(SVG_NS, 'path')
+            inner.setAttribute('d', sa.d)
+            inner.setAttribute('fill', 'none')
+            inner.setAttribute('stroke', DOUBLE_INNER)
+            inner.setAttribute('stroke-width', String(w.inner))
+            kids.push(inner)
+          }
           const p = document.createElementNS(SVG_NS, 'path')
           p.setAttribute('d', sa.d)
-          p.setAttribute('fill', sa.fill ?? 'none')
-          if (sa.stroke) p.setAttribute('stroke', sa.stroke)
-          if (sa.strokeWidth) p.setAttribute('stroke-width', String(sa.strokeWidth))
-          if (sa.strokeDasharray) p.setAttribute('stroke-dasharray', sa.strokeDasharray)
+          p.setAttribute('fill', sa.double ? 'none' : (sa.fill ?? 'none'))
+          if (!sa.double) {
+            if (sa.stroke) p.setAttribute('stroke', sa.stroke)
+            if (sa.strokeWidth) p.setAttribute('stroke-width', String(sa.strokeWidth))
+            if (sa.strokeDasharray) p.setAttribute('stroke-dasharray', sa.strokeDasharray)
+          } else {
+            // invisible hit/marker carrier — the double rails are drawn above
+            p.setAttribute('stroke', 'none')
+          }
           if (sa.markerStart) p.setAttribute('marker-start', sa.markerStart)
           if (sa.markerEnd) p.setAttribute('marker-end', sa.markerEnd)
-          svg.replaceChildren(defs, p)
+          kids.push(p)
+          svg.replaceChildren(...kids)
           el.replaceChildren(svg)
         }
       } else {
@@ -171,15 +208,38 @@ export function createRenderer(container: HTMLElement, opts: RendererOptions): R
     const edgeEls = engine.doc.edges.flatMap((e) => {
       const a = edgeAttrs(engine, e)
       if (!a) return []
+      const cls = engine.selectedIds.has(e.id) ? 'ki-edge ki-sel' : 'ki-edge'
+      const out: SVGElement[] = []
+      if (a.double) {
+        const w = doubleWidths(a.strokeWidth)
+        const outer = document.createElementNS(SVG_NS, 'path')
+        outer.setAttribute('class', cls)
+        outer.setAttribute('d', a.d)
+        if (a.stroke) outer.setAttribute('stroke', a.stroke)
+        outer.setAttribute('stroke-width', String(w.outer))
+        if (a.strokeDasharray) outer.setAttribute('stroke-dasharray', a.strokeDasharray)
+        out.push(outer)
+        const inner = document.createElementNS(SVG_NS, 'path')
+        inner.setAttribute('class', cls)
+        inner.setAttribute('d', a.d)
+        inner.setAttribute('stroke', DOUBLE_INNER)
+        inner.setAttribute('stroke-width', String(w.inner))
+        out.push(inner)
+      }
       const p = document.createElementNS(SVG_NS, 'path')
-      p.setAttribute('class', engine.selectedIds.has(e.id) ? 'ki-edge ki-sel' : 'ki-edge')
+      p.setAttribute('class', cls)
       p.setAttribute('d', a.d)
-      if (a.stroke) p.setAttribute('stroke', a.stroke)
-      if (a.strokeWidth) p.setAttribute('stroke-width', String(a.strokeWidth))
-      if (a.strokeDasharray) p.setAttribute('stroke-dasharray', a.strokeDasharray)
+      if (a.double) {
+        p.setAttribute('stroke', 'none')
+      } else {
+        if (a.stroke) p.setAttribute('stroke', a.stroke)
+        if (a.strokeWidth) p.setAttribute('stroke-width', String(a.strokeWidth))
+        if (a.strokeDasharray) p.setAttribute('stroke-dasharray', a.strokeDasharray)
+      }
       if (a.markerStart) p.setAttribute('marker-start', a.markerStart)
       if (a.markerEnd) p.setAttribute('marker-end', a.markerEnd)
-      return [p]
+      out.push(p)
+      return out
     })
     const preview = engine.connectPreview()
     if (preview) {
@@ -229,6 +289,20 @@ export function createRenderer(container: HTMLElement, opts: RendererOptions): R
     } else {
       marqueeEl.style.display = 'none'
     }
+
+    const pf = pageFrame(engine)
+    if (pf) {
+      pageEl.style.display = ''
+      pageEl.style.transform = `translate(${pf.left}px, ${pf.top}px)`
+      pageEl.style.width = `${pf.width}px`
+      pageEl.style.height = `${pf.height}px`
+    } else {
+      pageEl.style.display = 'none'
+    }
+
+    const hud = hudText(engine)
+    hudEl.style.display = hud ? '' : 'none'
+    if (hud) hudEl.textContent = hud
   }
 
   const unsubscribe = engine.subscribe(render)
@@ -242,6 +316,8 @@ export function createRenderer(container: HTMLElement, opts: RendererOptions): R
       for (const el of objEls.values()) el.remove()
       objEls.clear()
       for (const el of handleEls) el.remove()
+      pageEl.remove()
+      hudEl.remove()
       marqueeEl.remove()
       guideLayer.remove()
       portLayer.remove()

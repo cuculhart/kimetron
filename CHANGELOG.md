@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `@kimetron/core`: `WorldObject.locked` (selectable but not
+  movable/resizable/removable) and `WorldObject.group` (dragging one
+  member drags the whole group; Alt+drag detaches; marquee selection
+  expands to groups)
+- `@kimetron/core`: `Doc.page` — a world-space paper frame; its edges
+  join snap targets automatically, plus `engine.snapExtra` for
+  app-injected snap candidates
+- `@kimetron/core`: `engine.connectReplace` hook — edges it returns
+  are removed in the same commit as a new connection (one-wire-per-
+  input replace semantics); `rectContains`/`rectOverlapArea` helpers
+- `@kimetron/core`: `EdgeStyle`/`WorldObjectStyle` `double` flag for
+  double-stroke lines; `engine.selectionBounds()`
+- `@kimetron/dom`/`@kimetron/react`: `doc.page` renders as a backmost
+  paper frame; double strokes draw two rails; a HUD chip shows
+  position/size readouts while dragging or resizing
+- `drivers/sethera`: locked piece, grouped pair, page frame,
+  replace-on-occupied-input wiring, double rule — the remaining
+  sethera migration features
+
 ## [0.5.0] - 2026-10-16
 
 ### Added

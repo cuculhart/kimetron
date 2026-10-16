@@ -158,6 +158,7 @@ export function deserializeDoc(json: string): Doc {
               ...(o.style.capEnd === 'arrow' || o.style.capEnd === 'dot'
                 ? { capEnd: o.style.capEnd }
                 : {}),
+              ...(o.style.double === true ? { double: true } : {}),
             },
           }
         : {}),
@@ -177,6 +178,8 @@ export function deserializeDoc(json: string): Doc {
             },
           }
         : {}),
+      ...(typeof o.group === 'string' ? { group: o.group } : {}),
+      ...(o.locked === true ? { locked: true } : {}),
       ...(o.data !== undefined ? { data: o.data } : {}),
     })),
     edges: Array.isArray(raw.edges)
@@ -193,6 +196,7 @@ export function deserializeDoc(json: string): Doc {
                     ...(typeof e.style.color === 'string' ? { color: e.style.color } : {}),
                     ...(typeof e.style.width === 'number' ? { width: e.style.width } : {}),
                     ...(Array.isArray(e.style.dash) ? { dash: e.style.dash.map(Number) } : {}),
+                    ...(e.style.double === true ? { double: true } : {}),
                   },
                 }
               : {}),
@@ -205,5 +209,15 @@ export function deserializeDoc(json: string): Doc {
             ...(e.label !== undefined ? { label: String(e.label) } : {}),
           }))
       : [],
+    ...(raw.page && typeof raw.page === 'object'
+      ? {
+          page: {
+            x: Number(raw.page.x) || 0,
+            y: Number(raw.page.y) || 0,
+            w: Number(raw.page.w) || 0,
+            h: Number(raw.page.h) || 0,
+          },
+        }
+      : {}),
   }
 }

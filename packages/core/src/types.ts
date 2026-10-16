@@ -45,6 +45,8 @@ export interface WorldObjectStyle {
   capStart?: EdgeMarker
   /** End cap for 'line'/'curve' kinds. */
   capEnd?: EdgeMarker
+  /** Double-stroke rendering (outer = stroke color, inner = `--ki-bg`). */
+  double?: boolean
 }
 
 /** A shape anchor as a fraction of the object's bounding box, 0..1 —
@@ -76,6 +78,11 @@ export interface WorldObject {
   ports?: Port[]
   style?: WorldObjectStyle
   shape?: ObjectShape
+  /** Group id — objects sharing one move together on drag.
+      Alt+drag detaches the gesture to the hit object only. */
+  group?: string
+  /** Locked objects can be selected but not moved/resized/removed. */
+  locked?: boolean
   data?: unknown
 }
 
@@ -88,6 +95,8 @@ export interface EdgeStyle {
   width?: number
   /** stroke-dasharray pattern, e.g. [4, 4] for dashed. */
   dash?: number[]
+  /** Double-stroke rendering (outer = color, inner = `--ki-bg`). */
+  double?: boolean
 }
 
 export type EdgeMarker = 'arrow' | 'dot'
@@ -122,4 +131,7 @@ export interface Doc {
   grid: GridConfig
   objects: WorldObject[]
   edges: Edge[]
+  /** Optional paper frame in world coords — rendered backmost,
+      its edges join the object-snap targets. */
+  page?: Rect
 }

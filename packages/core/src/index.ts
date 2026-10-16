@@ -26,6 +26,8 @@ export {
   rectOf,
   pointInRect,
   rectsIntersect,
+  rectContains,
+  rectOverlapArea,
   rectBetween,
 } from './geometry'
 export {

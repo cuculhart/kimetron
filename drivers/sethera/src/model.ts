@@ -1,4 +1,4 @@
-import type { Edge, Port, WorldObject } from '@kimetron/core'
+import { rectContains, type Edge, type Port, type Rect, type WorldObject } from '@kimetron/core'
 
 /**
  * sethera-piece spike: a tiny estimate board.
@@ -27,9 +27,7 @@ export interface CalcData {
 }
 
 export interface Meta {
-  /** custom-piece group: members should move as one (engine gap P25) */
-  groupId?: string
-  /** lock: should block drag/resize/delete (engine gap P26) */
+  /** visual accent for the locked piece */
   locked?: boolean
 }
 
@@ -54,15 +52,17 @@ const LOCK_STROKE = '#d97706'
 
 function piece(
   id: string, x: number, y: number, label: string, value: number | null,
-  meta: Meta = {},
+  extra: Partial<WorldObject> & Meta = {},
 ): WorldObject {
+  const { locked, ...fields } = extra
   return {
     id, kind: 'piece', x, y, w: 50, h: 15, ports: OUT.map((p) => ({ ...p })),
     style: {
       fill: PIECE_FILL,
-      ...(meta.locked ? { stroke: LOCK_STROKE } : {}),
+      ...(locked ? { stroke: LOCK_STROKE } : {}),
     },
-    data: { label, value, ...meta },
+    ...fields,
+    data: { label, value, locked },
   }
 }
 
@@ -92,7 +92,8 @@ function rule(id: string, x: number, y: number, w: number): WorldObject {
   }
 }
 
-export function sampleDoc(): { objects: WorldObject[]; edges: Edge[] } {
+export function sampleDoc(): { objects: WorldObject[]; edges: Edge[]; page: Rect } {
+  const page: Rect = { x: 10, y: 10, w: 470, h: 165 }
   const objects: WorldObject[] = [
     zone('z1', 15, 15, 100, 55, 'sum', 'Σ 小計'),
     piece('pA', 25, 25, '品A', 700),
@@ -126,9 +127,16 @@ export function sampleDoc(): { objects: WorldObject[]; edges: Edge[] } {
       style: { stroke: '#0f766e', width: 2, capStart: 'dot', capEnd: 'dot' },
       data: {},
     },
-    // a "custom piece" pair sharing a group — should move as one (gap P25)
-    piece('gHead', 165, 100, '見出し', null, { groupId: 'g1' }),
-    piece('gBody', 165, 118, '説明文', null, { groupId: 'g1' }),
+    // a "custom piece" pair sharing a group — they move as one now
+    piece('gHead', 165, 100, '見出し', null, { group: 'g1' }),
+    piece('gBody', 165, 118, '説明文', null, { group: 'g1' }),
+    // a double-stroke rule (P29 approximation)
+    {
+      id: 'r2', kind: 'line', x: 15, y: 175, w: 100, h: 2,
+      shape: { points: [{ fx: 0, fy: 0.5 }, { fx: 1, fy: 0.5 }] },
+      style: { stroke: '#333', width: 4, double: true },
+      data: {},
+    },
   ]
   const WIRE = { route: 'bezier' as const, style: { color: '#b45309', width: 1.8 }, markerEnd: 'arrow' as const }
   const edges: Edge[] = [
@@ -136,15 +144,7 @@ export function sampleDoc(): { objects: WorldObject[]; edges: Edge[] } {
     { id: 'w2', from: { obj: 'pShip', port: 'out' }, to: { obj: 'cAdd', port: 'b' }, ...WIRE },
     { id: 'w3', from: { obj: 'cAdd', port: 'out' }, to: { obj: 'cTax', port: 'a' }, ...WIRE },
   ]
-  return { objects, edges }
-}
-
-function rectContains(outer: WorldObject, inner: WorldObject): boolean {
-  return (
-    inner.x >= outer.x && inner.y >= outer.y &&
-    inner.x + inner.w <= outer.x + outer.w &&
-    inner.y + inner.h <= outer.y + outer.h
-  )
+  return { objects, edges, page }
 }
 
 /** Resolve an object's numeric value: piece → value, zone → Σ members,
@@ -162,7 +162,9 @@ export function objectValue(
   const d = o.data as AnyData | undefined
   if (o.kind === 'piece') return (d as PieceData)?.value ?? null
   if (o.kind === 'zone') {
-    const members = objects.filter((m) => m.id !== id && m.kind !== 'zone' && rectContains(o, m))
+    const members = objects.filter(
+      (m) => m.id !== id && m.kind !== 'zone' && rectContains(o, m),
+    )
     const fn = (d as ZoneData)?.fn
     if (fn === 'count') return members.length
     const vals = members
@@ -189,12 +191,17 @@ export function objectValue(
   return null
 }
 
-/** sethera's wiring rule: values flow out → calc inputs a/b.
-    Also blocks a second wire onto an occupied input (replace is a gap). */
-export function canConnect(from: { obj: string; port?: string }, to: { obj: string; port?: string }, edges: Edge[]): boolean {
+/** sethera's wiring rule: values flow out → calc inputs a/b. */
+export function canConnect(from: { obj: string; port?: string }, to: { obj: string; port?: string }): boolean {
   if (from.port !== 'out') return false
-  if (to.port !== 'a' && to.port !== 'b') return false
-  return !edges.some((e) => e.to.obj === to.obj && e.to.port === to.port)
+  return to.port === 'a' || to.port === 'b'
+}
+
+/** One wire per calc input: an occupied input replaces its wire. */
+export function connectReplace(to: { obj: string; port?: string }, edges: Edge[]): string[] {
+  return edges
+    .filter((e) => e.to.obj === to.obj && e.to.port === to.port)
+    .map((e) => e.id)
 }
 
 export const WIRE_DEFAULTS = {

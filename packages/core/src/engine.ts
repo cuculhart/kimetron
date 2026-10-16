@@ -28,6 +28,8 @@ type Mode = 'idle' | 'drag' | 'marquee' | 'pan' | 'resize' | 'connect'
 export interface PointerOpts {
   button?: number
   additive?: boolean
+  /** Alt+drag: drag only the hit object, ignoring its group. */
+  detached?: boolean
 }
 
 /** Which world-space edges a resize handle moves: -1 = min edge, +1 = max edge, 0 = untouched. */
@@ -69,6 +71,11 @@ export class Engine {
   connectEdge?: Partial<Edge>
   /** Optional policy hook — return false to reject a connection (commit and hover are blocked). */
   canConnect?: (from: EdgeEndpoint, to: EdgeEndpoint) => boolean
+  /** Optional hook — edge ids removed when a connection commits, in the
+      same commit (e.g. replacing the wire on an occupied calc input). */
+  connectReplace?: (from: EdgeEndpoint, to: EdgeEndpoint) => Iterable<string>
+  /** Extra snap candidates injected by the app (page frames, guides). */
+  snapExtra: { xs: number[]; ys: number[] } = { xs: [], ys: [] }
   marquee: Rect | null = null
   cursorWorld: Pt = { x: 0, y: 0 }
   version = 0
@@ -238,14 +245,19 @@ export class Engine {
   }
 
   moveSelectedBy(dx: number, dy: number): void {
-    this.doc = moveObjects(this.doc, this.selectedIds, dx, dy)
+    const ids = [...this.selectedIds].filter((id) => !this.lockedById(id))
+    this.doc = moveObjects(this.doc, ids, dx, dy)
     this.emitDoc()
+  }
+
+  private lockedById(id: string): boolean {
+    return this.doc.objects.some((o) => o.id === id && o.locked === true)
   }
 
   removeSelected(): void {
     if (this.selectedIds.size === 0) return
-    const objIds = [...this.selectedIds].filter((id) =>
-      this.doc.objects.some((o) => o.id === id),
+    const objIds = [...this.selectedIds].filter(
+      (id) => this.doc.objects.some((o) => o.id === id) && !this.lockedById(id),
     )
     const edgeIds = [...this.selectedIds].filter((id) =>
       this.doc.edges.some((e) => e.id === id),
@@ -286,7 +298,7 @@ export class Engine {
       return id
     }
     const copies = this.doc.objects
-      .filter((o) => this.selectedIds.has(o.id))
+      .filter((o) => this.selectedIds.has(o.id) && !o.locked)
       .map((o) => ({
         ...o,
         id: fresh(o.id),
@@ -394,7 +406,7 @@ export class Engine {
   /** Begin a resize gesture on `id`, moving the world-space edges given by `dir`. */
   startResize(pt: Pt, id: string, dir: ResizeDir): void {
     const o = this.doc.objects.find((o) => o.id === id)
-    if (!o || (dir.x === 0 && dir.y === 0)) return
+    if (!o || o.locked || (dir.x === 0 && dir.y === 0)) return
     this.mode = 'resize'
     this.resizeId = id
     this.resizeDir = dir
@@ -423,7 +435,10 @@ export class Engine {
         return
       }
       if (!this.selectedIds.has(hit.id)) this.setSelection([hit.id])
-      this.dragIds = [...this.selectedIds]
+      if (hit.locked) return // selectable but not draggable
+      this.dragIds = opts.detached
+        ? [hit.id]
+        : this.expandDragIds(this.selectedIds)
       this.dragAnchor = { x: hit.x, y: hit.y }
       this.dragAnchorSize = { w: hit.w, h: hit.h }
       this.mode = 'drag'
@@ -486,9 +501,19 @@ export class Engine {
 
     if (this.mode === 'marquee') {
       this.marquee = rectBetween(this.startWorld, w)
-      const ids = this.doc.objects
-        .filter((o) => rectsIntersect(this.marquee as Rect, rectOf(o)))
-        .map((o) => o.id)
+      const ids = new Set(
+        this.doc.objects
+          .filter((o) => rectsIntersect(this.marquee as Rect, rectOf(o)))
+          .map((o) => o.id),
+      )
+      const groups = new Set(
+        this.doc.objects.filter((o) => ids.has(o.id) && o.group).map((o) => o.group),
+      )
+      if (groups.size > 0) {
+        for (const o of this.doc.objects) {
+          if (o.group && groups.has(o.group)) ids.add(o.id)
+        }
+      }
       this.setSelection(ids)
       this.emit()
       return
@@ -587,7 +612,12 @@ export class Engine {
         to: this.connect.hover,
         route: this.connectEdge?.route ?? this.connectRoute,
       }
-      this.doc = addEdge(this.doc, edge)
+      const drop = this.connectReplace
+        ? [...this.connectReplace(this.connect.from, this.connect.hover)]
+        : []
+      let doc = drop.length > 0 ? removeEdges(this.doc, drop) : this.doc
+      doc = addEdge(doc, edge)
+      this.doc = doc
       this.emitDoc()
     }
     this.mode = 'idle'
@@ -602,16 +632,44 @@ export class Engine {
     this.emit()
   }
 
+  /** Selection-expanded drag set: same-group members, minus locked. */
+  private expandDragIds(ids: Iterable<string>): string[] {
+    const set = new Set(ids)
+    const groups = new Set(
+      this.doc.objects.filter((o) => set.has(o.id) && o.group).map((o) => o.group),
+    )
+    for (const o of this.doc.objects) {
+      if (o.group && groups.has(o.group)) set.add(o.id)
+    }
+    return [...set].filter((id) => !this.lockedById(id))
+  }
+
+  /** World-space bounding box of the selected objects, or null. */
+  selectionBounds(): Rect | null {
+    const objs = this.doc.objects.filter((o) => this.selectedIds.has(o.id))
+    if (objs.length === 0) return null
+    const x0 = Math.min(...objs.map((o) => o.x))
+    const y0 = Math.min(...objs.map((o) => o.y))
+    const x1 = Math.max(...objs.map((o) => o.x + o.w))
+    const y1 = Math.max(...objs.map((o) => o.y + o.h))
+    return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
+  }
+
   private snapTargets(exclude: Set<string>): { xs: number[]; ys: number[] } {
-    const xs: number[] = []
-    const ys: number[] = []
+    const xs: number[] = [...this.snapExtra.xs]
+    const ys: number[] = [...this.snapExtra.ys]
+    const p = this.doc.page
+    if (p) {
+      xs.push(p.x, p.x + p.w / 2, p.x + p.w)
+      ys.push(p.y, p.y + p.h / 2, p.y + p.h)
+    }
     for (const o of this.doc.objects) {
       if (exclude.has(o.id)) continue
       xs.push(o.x, o.x + o.w / 2, o.x + o.w)
       ys.push(o.y, o.y + o.h / 2, o.y + o.h)
-      for (const p of shapeSnapPoints(o)) {
-        xs.push(p.x)
-        ys.push(p.y)
+      for (const sp of shapeSnapPoints(o)) {
+        xs.push(sp.x)
+        ys.push(sp.y)
       }
     }
     return { xs, ys }

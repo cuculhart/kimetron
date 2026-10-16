@@ -1,5 +1,5 @@
 import type { Edge, EdgeMarker, EdgeRoute, Engine, Origin, Port, Pt, ResizeDir, WorldObject } from '@kimetron/core'
-import { arcAngles, arcPoint, edgeEndpoints, edgeGeom, shapeAnchors, unitToPx } from '@kimetron/core'
+import { arcAngles, arcPoint, edgeEndpoints, edgeGeom, formatLength, shapeAnchors, unitToPx } from '@kimetron/core'
 
 export interface Frame {
   left: number
@@ -37,6 +37,17 @@ export function objectFrame(engine: Engine, o: { x: number; y: number; w: number
   }
   const s = engine.worldToScreen(corner)
   return { left: s.x, top: s.y, width: rr.w * u, height: rr.h * u }
+}
+
+/** Screen-space frame of the document page rect, or null when unset. */
+export function pageFrame(engine: Engine): Frame | null {
+  const p = engine.doc.page
+  if (!p) return null
+  const { doc, viewport: vp } = engine
+  const u = unitToPx(doc.units) * vp.zoom
+  const corner = { x: p.x, y: doc.origin === 'top-left' ? p.y : p.y + p.h }
+  const s = engine.worldToScreen(corner)
+  return { left: s.x, top: s.y, width: p.w * u, height: p.h * u }
 }
 
 export function marqueeFrame(engine: Engine): Frame | null {
@@ -180,6 +191,7 @@ export interface EdgeAttrs {
   strokeDasharray?: string
   markerStart?: string
   markerEnd?: string
+  double?: boolean
 }
 
 export function edgeAttrs(engine: Engine, e: Edge): EdgeAttrs | null {
@@ -192,7 +204,17 @@ export function edgeAttrs(engine: Engine, e: Edge): EdgeAttrs | null {
     strokeDasharray: e.style?.dash?.join(' '),
     markerStart: e.markerStart ? `url(#${markerId(e, 'start')})` : undefined,
     markerEnd: e.markerEnd ? `url(#${markerId(e, 'end')})` : undefined,
+    double: e.style?.double,
   }
+}
+
+/** Inner stroke color of double lines (the paper color). */
+export const DOUBLE_INNER = 'var(--ki-bg, #fff)'
+
+/** Double-stroke widths: outer rail = color, inner channel = bg. */
+export function doubleWidths(width?: number): { outer: number; inner: number } {
+  const outer = width ?? 4
+  return { outer, inner: Math.max(0.8, outer - 2.2) }
 }
 
 // --- shape kinds (line / curve / ellipse / arc) ---
@@ -278,6 +300,7 @@ export interface ShapeAttrs {
   strokeDasharray?: string
   markerStart?: string
   markerEnd?: string
+  double?: boolean
 }
 
 export function shapeAttrs(engine: Engine, o: WorldObject): ShapeAttrs | null {
@@ -295,7 +318,24 @@ export function shapeAttrs(engine: Engine, o: WorldObject): ShapeAttrs | null {
     strokeDasharray: o.style?.dash?.join(' '),
     markerStart: o.style?.capStart ? `url(#${shapeCapMarkerId(o, 's')})` : undefined,
     markerEnd: o.style?.capEnd ? `url(#${shapeCapMarkerId(o, 'e')})` : undefined,
+    double: o.style?.double,
   }
+}
+
+/** Drag/resize HUD readout (world units), or null when idle. */
+export function hudText(engine: Engine): string | null {
+  const u = engine.doc.units
+  if (engine.resize) {
+    const r = engine.resize.rect
+    return `${formatLength(r.w, u)} × ${formatLength(r.h, u)} @ ${formatLength(r.x, u)}, ${formatLength(r.y, u)}`
+  }
+  if (engine.dragDelta) {
+    const b = engine.selectionBounds()
+    if (!b) return null
+    const d = engine.dragDelta
+    return `${formatLength(b.x + d.x, u)}, ${formatLength(b.y + d.y, u)} (${formatLength(b.w, u)} × ${formatLength(b.h, u)})`
+  }
+  return null
 }
 
 /** A `<marker>` def needed by an edge or a shape cap: id, glyph kind, resolved color. */
@@ -357,6 +397,8 @@ export function injectStyles(): void {
 .ki-obj.ki-shape.ki-sel { border: 1px dashed var(--ki-sel, #3a7bd5); box-shadow: none; }
 .ki-shape-svg { position: absolute; left: 0; top: 0; overflow: visible; }
 .ki-shape { fill: none; }
+.ki-page { position: absolute; left: 0; top: 0; background: var(--ki-page, #fff); border: 1px solid var(--ki-page-border, #b8c4d0); box-shadow: 0 1px 4px rgba(0,0,0,0.08); z-index: 0; pointer-events: none; }
+.ki-hud { position: absolute; top: 8px; right: 8px; padding: 2px 8px; font: 11px/1.4 ui-monospace, monospace; background: rgba(28,39,51,0.85); color: #fff; border-radius: 4px; pointer-events: none; z-index: 20; }
 `
   document.head.appendChild(el)
 }

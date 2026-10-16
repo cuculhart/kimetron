@@ -26,6 +26,7 @@ export function attachInput(el: HTMLElement, engine: Engine): () => void {
       engine.pointerDown(toLocal(e), {
         button: e.button,
         additive: e.shiftKey,
+        detached: e.altKey,
       })
     }
     el.setPointerCapture(e.pointerId)

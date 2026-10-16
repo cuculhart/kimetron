@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { formatLength } from '@kimetron/core'
 import type { WorldObject } from '@kimetron/core'
 import { IsleCanvas, useEngine, useEngineVersion } from '@kimetron/react'
-import { canConnect, GRID_CFG, objectValue, OP_LABEL, sampleDoc, WIRE_DEFAULTS } from './model'
+import { canConnect, connectReplace, GRID_CFG, objectValue, OP_LABEL, sampleDoc, WIRE_DEFAULTS } from './model'
 import type { CalcData, Meta, ZoneData } from './model'
 import '../../demo/src/styles.css'
 
@@ -19,12 +19,13 @@ export function App() {
 
   useEffect(() => {
     engine.connectEdge = WIRE_DEFAULTS
-    engine.canConnect = (from, to) => canConnect(from, to, engine.doc.edges)
+    engine.canConnect = canConnect
+    engine.connectReplace = (_from, to) => connectReplace(to, engine.doc.edges)
   }, [engine])
 
   useEffect(() => {
-    const { objects, edges } = sampleDoc()
-    engine.setDoc({ ...engine.doc, objects, edges })
+    const { objects, edges, page } = sampleDoc()
+    engine.setDoc({ ...engine.doc, objects, edges, page })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [engine])
 
@@ -76,8 +77,8 @@ export function App() {
             <div className="obj-label">
               <b>{p?.label ?? o.id}</b>
               {p?.value !== null && p?.value !== undefined && <span>{fmt(p.value)}</span>}
-              {p?.locked && <span>🔒</span>}
-              {p?.groupId && <span className="hint">{p.groupId}</span>}
+              {o.locked && <span>🔒</span>}
+              {o.group && <span className="hint">{o.group}</span>}
             </div>
           )
         }}
@@ -92,7 +93,7 @@ export function App() {
         <span>objects {doc.objects.length}</span>
         <span>wires {doc.edges.length}</span>
         <span className="sep" />
-        <span className="hint">wire: out-port → calc a/b only / Σ aggregates contained pieces / line·ellipse·arc·curve are engine shapes (P24) / lock & group still data-only (P25/P26)</span>
+        <span className="hint">wire: out-port → calc a/b (occupied input = replace) / Σ aggregates contained pieces / lock & group & page & double-line are engine features</span>
       </footer>
     </div>
   )

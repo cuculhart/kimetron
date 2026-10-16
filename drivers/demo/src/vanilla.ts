@@ -34,6 +34,17 @@ engine.addObject({
   shape: { points: [{ fx: 0, fy: 0.8 }, { fx: 0.3, fy: 0 }, { fx: 0.7, fy: 1 }, { fx: 1, fy: 0.2 }] },
   style: { stroke: '#0f766e', width: 2, dash: [5, 3] },
 })
+// v0.6.0: locked (selectable, not draggable), group (moves together),
+// page frame, double-stroke line
+engine.addObject({ id: 'fixed', kind: 'rect', x: 20, y: 140, w: 40, h: 20, locked: true, style: { fill: '#fef3c7', stroke: '#d97706' } })
+engine.addObject({ id: 'ga', kind: 'rect', x: 80, y: 140, w: 30, h: 15, group: 'pair' })
+engine.addObject({ id: 'gb', kind: 'rect', x: 80, y: 160, w: 30, h: 15, group: 'pair' })
+engine.addObject({
+  id: 'dbl', kind: 'line', x: 130, y: 145, w: 80, h: 15,
+  shape: { points: [{ fx: 0, fy: 0.5 }, { fx: 1, fy: 0.5 }] },
+  style: { stroke: '#333', width: 5, double: true },
+})
+engine.doc = { ...engine.doc, page: { x: 10, y: 10, w: 230, h: 180 } }
 
 const el = document.getElementById('canvas') as HTMLElement
 createRenderer(el, { engine })

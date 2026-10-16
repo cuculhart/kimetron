@@ -41,6 +41,23 @@ export function rectsIntersect(a: Rect, b: Rect): boolean {
   return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
 }
 
+/** True when `inner` is fully inside `outer` (inclusive edges). */
+export function rectContains(outer: Rect, inner: Rect): boolean {
+  return (
+    inner.x >= outer.x &&
+    inner.y >= outer.y &&
+    inner.x + inner.w <= outer.x + outer.w &&
+    inner.y + inner.h <= outer.y + outer.h
+  )
+}
+
+/** Overlap area of two rects (0 when disjoint). */
+export function rectOverlapArea(a: Rect, b: Rect): number {
+  const w = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)
+  const h = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y)
+  return w > 0 && h > 0 ? w * h : 0
+}
+
 export function rectBetween(a: Pt, b: Pt): Rect {
   return {
     x: Math.min(a.x, b.x),

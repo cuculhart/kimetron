@@ -2,7 +2,7 @@ import { useEffect, useRef, useSyncExternalStore } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { Engine, isShapeKind } from '@kimetron/core'
 import type { Doc, WorldConfig, WorldObject } from '@kimetron/core'
-import { attachInput, edgeAttrs, edgeMarkerDefs, gridBackground, handlePoints, injectStyles, marqueeFrame, objectFrame, portPoints, routePathD, shapeAttrs, shapeCapMarkerDefs } from '@kimetron/dom'
+import { attachInput, DOUBLE_INNER, doubleWidths, edgeAttrs, edgeMarkerDefs, gridBackground, handlePoints, hudText, injectStyles, marqueeFrame, objectFrame, pageFrame, portPoints, routePathD, shapeAttrs, shapeCapMarkerDefs } from '@kimetron/dom'
 
 export function useEngine(cfg?: WorldConfig): Engine {
   const ref = useRef<Engine | null>(null)
@@ -61,6 +61,8 @@ export function IsleCanvas({
   }, [autoOrigin, origin, engine])
 
   const marquee = marqueeFrame(engine)
+  const page = pageFrame(engine)
+  const hud = hudText(engine)
   const connectPreview = engine.connectPreview()
   const selObj =
     engine.selectedIds.size === 1
@@ -74,6 +76,16 @@ export function IsleCanvas({
       className={className ?? 'ki-canvas'}
       style={{ ...gridBackground(engine), ...style }}
     >
+      {page && (
+        <div
+          className="ki-page"
+          style={{
+            transform: `translate(${page.left}px, ${page.top}px)`,
+            width: page.width,
+            height: page.height,
+          }}
+        />
+      )}
       <svg className="ki-edges">
         <defs>
           {engine.doc.edges.flatMap((e) =>
@@ -100,17 +112,26 @@ export function IsleCanvas({
         {engine.doc.edges.map((e) => {
           const a = edgeAttrs(engine, e)
           if (!a) return null
+          const cls = engine.selectedIds.has(e.id) ? 'ki-edge ki-sel' : 'ki-edge'
+          const dw = a.double ? doubleWidths(a.strokeWidth) : null
           return (
-            <path
-              key={e.id}
-              className={engine.selectedIds.has(e.id) ? 'ki-edge ki-sel' : 'ki-edge'}
-              d={a.d}
-              stroke={a.stroke}
-              strokeWidth={a.strokeWidth}
-              strokeDasharray={a.strokeDasharray}
-              markerStart={a.markerStart}
-              markerEnd={a.markerEnd}
-            />
+            <g key={e.id}>
+              {dw && (
+                <>
+                  <path className={cls} d={a.d} stroke={a.stroke} strokeWidth={dw.outer} strokeDasharray={a.strokeDasharray} />
+                  <path className={cls} d={a.d} stroke={DOUBLE_INNER} strokeWidth={dw.inner} />
+                </>
+              )}
+              <path
+                className={cls}
+                d={a.d}
+                stroke={a.double ? 'none' : a.stroke}
+                strokeWidth={a.double ? undefined : a.strokeWidth}
+                strokeDasharray={a.double ? undefined : a.strokeDasharray}
+                markerStart={a.markerStart}
+                markerEnd={a.markerEnd}
+              />
+            </g>
           )
         })}
         {connectPreview && (
@@ -167,12 +188,22 @@ export function IsleCanvas({
                     </marker>
                   ))}
                 </defs>
+                {shape.double &&
+                  (() => {
+                    const w = doubleWidths(shape.strokeWidth)
+                    return (
+                      <>
+                        <path d={shape.d} fill={shape.fill} stroke={shape.stroke} strokeWidth={w.outer} strokeDasharray={shape.strokeDasharray} />
+                        <path d={shape.d} fill="none" stroke={DOUBLE_INNER} strokeWidth={w.inner} />
+                      </>
+                    )
+                  })()}
                 <path
                   d={shape.d}
-                  fill={shape.fill}
-                  stroke={shape.stroke}
-                  strokeWidth={shape.strokeWidth}
-                  strokeDasharray={shape.strokeDasharray}
+                  fill={shape.double ? 'none' : shape.fill}
+                  stroke={shape.double ? 'none' : shape.stroke}
+                  strokeWidth={shape.double ? undefined : shape.strokeWidth}
+                  strokeDasharray={shape.double ? undefined : shape.strokeDasharray}
                   markerStart={shape.markerStart}
                   markerEnd={shape.markerEnd}
                 />
@@ -227,6 +258,7 @@ export function IsleCanvas({
           }}
         />
       )}
+      {hud && <div className="ki-hud">{hud}</div>}
     </div>
   )
 }

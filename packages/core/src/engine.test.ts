@@ -7,6 +7,8 @@ import {
   formatLength,
   formatScale,
   screenToWorld,
+  rectContains,
+  rectOverlapArea,
   serializeDoc,
   snap,
   unitToPx,
@@ -536,6 +538,123 @@ describe('shape kinds', () => {
     }
     const out = deserializeDoc(serializeDoc(withShape))
     expect(out).toEqual(withShape)
+  })
+})
+
+describe('lock, group, page and connectReplace', () => {
+  function make(objs: WorldObject[], docExtra: Partial<ReturnType<typeof createDocument>> = {}) {
+    const e = new Engine({ units: 'mm', origin: 'bottom-left', grid: { size: 10, snap: true } }, objs)
+    if (Object.keys(docExtra).length) e.doc = { ...e.doc, ...docExtra }
+    e.viewport = { x: 0, y: 500, zoom: 1 }
+    return e
+  }
+  const dragBy = (e: Engine, from: { x: number; y: number }, to: { x: number; y: number }, opts?: { detached?: boolean }) => {
+    e.pointerDown(e.worldToScreen(from), opts)
+    e.pointerMove(e.worldToScreen(to))
+    e.pointerUp()
+  }
+
+  it('locked object: selectable, not draggable, not removable, not resizable', () => {
+    const e = make([{ id: 'a', kind: 'rect', x: 0, y: 0, w: 20, h: 10, locked: true }])
+    dragBy(e, { x: 10, y: 5 }, { x: 30, y: 25 })
+    expect(e.doc.objects[0].x).toBe(0)
+    expect(e.selectedIds.has('a')).toBe(true)
+    e.removeSelected()
+    expect(e.doc.objects.length).toBe(1)
+    e.startResize(e.worldToScreen({ x: 0, y: 0 }), 'a', { x: 1, y: 1 })
+    e.pointerMove(e.worldToScreen({ x: 50, y: 50 }))
+    e.pointerUp()
+    expect(e.doc.objects[0].w).toBe(20)
+  })
+
+  it('group members drag together; Alt+drag detaches', () => {
+    const objs = [
+      { id: 'g1', kind: 'rect', x: 0, y: 0, w: 10, h: 10, group: 'g' },
+      { id: 'g2', kind: 'rect', x: 20, y: 0, w: 10, h: 10, group: 'g' },
+      { id: 'u', kind: 'rect', x: 50, y: 0, w: 10, h: 10 },
+    ]
+    const e = make(objs)
+    e.setSelection(['g1'])
+    dragBy(e, { x: 5, y: 5 }, { x: 15, y: 5 })
+    const moved = e.doc.objects
+    expect(moved[0].x).toBe(10)
+    expect(moved[1].x).toBe(30)
+    expect(moved[2].x).toBe(50)
+
+    const e2 = make(objs)
+    e2.setSelection(['g1'])
+    dragBy(e2, { x: 5, y: 5 }, { x: 15, y: 5 }, { detached: true })
+    expect(e2.doc.objects[0].x).toBe(10)
+    expect(e2.doc.objects[1].x).toBe(20)
+  })
+
+  it('snapExtra and doc.page edges join snap targets', () => {
+    const e = make([{ id: 'b', kind: 'rect', x: 80, y: 80, w: 10, h: 10 }], {
+      page: { x: 0, y: 0, w: 200, h: 100 },
+    })
+    // drag left edge toward page's right edge x=200 — wait, object at 80; move so its right edge snaps to 200? drag by 113 → right edge at 203, tol 6px≈1.6mm — snap to 200 needs |203-200|>tol. Instead snap left edge to page left edge x=0: drag dx=-81 → left at -1, snaps to 0 → dx=-80
+    e.pointerDown(e.worldToScreen({ x: 85, y: 85 }))
+    e.pointerMove(e.worldToScreen({ x: 85 - 81, y: 85 }))
+    expect(e.dragDelta?.x).toBe(-80) // snapped to page edge x=0
+    e.pointerUp()
+
+    const e2 = make([{ id: 'b', kind: 'rect', x: 80, y: 80, w: 10, h: 10 }])
+    e2.snapExtra = { xs: [50], ys: [] }
+    e2.pointerDown(e2.worldToScreen({ x: 85, y: 85 }))
+    e2.pointerMove(e2.worldToScreen({ x: 85 - 29, y: 85 }))
+    expect(e2.dragDelta?.x).toBe(-30) // snapped: 80-30=50 = snapExtra x
+  })
+
+  it('connectReplace swaps the wire on an occupied input', () => {
+    const ports = [
+      { id: 'out', fx: 1, fy: 0.5 },
+      { id: 'a', fx: 0, fy: 0.5 },
+    ]
+    const e = make([
+      { id: 's1', kind: 'rect', x: 0, y: 0, w: 10, h: 10, ports: [ports[0]] },
+      { id: 's2', kind: 'rect', x: 0, y: 30, w: 10, h: 10, ports: [ports[0]] },
+      { id: 't', kind: 'rect', x: 60, y: 10, w: 10, h: 10, ports: [ports[0], ports[1]] },
+    ])
+    const connect = (fromObj: string, sx: number, sy: number) => {
+      e.startConnect(e.worldToScreen({ x: sx, y: sy }), fromObj, 'out')
+      e.pointerMove(e.worldToScreen({ x: 60, y: 15 }))
+      e.pointerUp()
+    }
+    connect('s1', 10, 5)
+    expect(e.doc.edges.length).toBe(1)
+    e.connectReplace = (_f, to) =>
+      e.doc.edges.filter((w) => w.to.obj === to.obj && w.to.port === to.port).map((w) => w.id)
+    connect('s2', 10, 35)
+    expect(e.doc.edges.length).toBe(1)
+    expect(e.doc.edges[0].from.obj).toBe('s2')
+    // undo restores the replaced wire and drops the new one
+    e.undo()
+    expect(e.doc.edges.length).toBe(1)
+    expect(e.doc.edges[0].from.obj).toBe('s1')
+  })
+
+  it('rectContains and rectOverlapArea', () => {
+    expect(rectContains({ x: 0, y: 0, w: 100, h: 100 }, { x: 10, y: 10, w: 20, h: 20 })).toBe(true)
+    expect(rectContains({ x: 0, y: 0, w: 100, h: 100 }, { x: 90, y: 10, w: 20, h: 20 })).toBe(false)
+    expect(rectOverlapArea({ x: 0, y: 0, w: 10, h: 10 }, { x: 5, y: 5, w: 10, h: 10 })).toBe(25)
+    expect(rectOverlapArea({ x: 0, y: 0, w: 10, h: 10 }, { x: 20, y: 0, w: 10, h: 10 })).toBe(0)
+  })
+
+  it('serializes locked/group/page/double', () => {
+    const doc = createDocument({ units: 'mm', origin: 'top-left' })
+    const d = {
+      ...doc,
+      page: { x: 0, y: 0, w: 200, h: 100 },
+      objects: [
+        { id: 'a', kind: 'rect', x: 1, y: 2, w: 3, h: 4, locked: true, group: 'g1' },
+        { id: 'l', kind: 'line', x: 0, y: 0, w: 10, h: 10, style: { stroke: '#333', width: 4, double: true } },
+      ],
+      edges: [
+        { id: 'e1', from: { obj: 'a' }, to: { obj: 'l' }, style: { color: '#333', width: 4, double: true } },
+      ],
+    }
+    const out = deserializeDoc(serializeDoc(d))
+    expect(out).toEqual(d)
   })
 })
 

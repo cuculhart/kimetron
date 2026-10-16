@@ -103,6 +103,9 @@ export function App() {
   useEffect(() => {
     const { objects } = sampleDoc()
     engine.setDoc({ ...engine.doc, objects })
+    // start at 1:20 — the site fills a comfortable viewport
+    engine.viewport = { x: 60, y: 60, zoom: 1 / 20 }
+    engine.panBy(0, 0)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [engine])
 
@@ -159,6 +162,7 @@ export function App() {
       <div className="plan-wrap">
         <IsleCanvas
           engine={engine}
+          autoOrigin={false}
           style={{ flex: 1 }}
           renderObject={(o: WorldObject) => {
             if (o.kind === 'site') return null

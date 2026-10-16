@@ -73,6 +73,10 @@ footer.bar {
 }
 .plan-wrap > .ki-canvas {
   flex: 1;
+  /* rulers are canvas-px overlays — inset the canvas so content
+     can't slide underneath them */
+  margin-top: 20px;
+  margin-left: 22px;
 }
 .ki-ruler {
   position: absolute;
@@ -83,12 +87,12 @@ footer.bar {
   color: #7a8794;
 }
 .ki-ruler-x {
-  top: 0; left: 0; right: 0; height: 20px;
+  top: 0; left: 22px; right: 0; height: 20px;
   background: linear-gradient(#f8f9fb, #eef1f5);
   border-bottom: 1px solid #d8dde4;
 }
 .ki-ruler-y {
-  top: 0; bottom: 0; left: 0; width: 22px;
+  top: 20px; bottom: 0; left: 0; width: 22px;
   background: linear-gradient(to right, #f8f9fb, #eef1f5);
   border-right: 1px solid #d8dde4;
 }

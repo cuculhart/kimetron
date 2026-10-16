@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.9.0] - 2026-10-16
 
 ### Added
 
@@ -30,7 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   HUD shows degrees while rotating; `screenRotDeg` helper
 - `drivers/plan`: a 45° diagonal partition wall (+斜め壁 spawn button),
   a rotated chair, and a compass object proving rot rides selection,
-  handles, snap and collision
+  handles, snap and collision; canvas inset under the rulers so
+  content can't hide beneath them; startup scale 1:20
 
 ## [0.8.0] - 2026-10-16
 

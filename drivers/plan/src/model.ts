@@ -1,4 +1,4 @@
-import type { WorldObject } from '@kimetron/core'
+import { rectOverlapArea, type WorldObject } from '@kimetron/core'
 
 /**
  * plan spike: a 10 mm-grid floor plan.
@@ -17,12 +17,20 @@ const WALL_STROKE = '#2e2a26'
 const FURN_FILL = '#dccfb4'
 const FURN_STROKE = '#8a7a5c'
 
-function wall(id: string, x: number, y: number, w: number, h: number): WorldObject {
+export interface WallData {
+  /** Perimeter wall — part of the building envelope (drives area calcs). */
+  perimeter?: boolean
+}
+
+function wall(
+  id: string, x: number, y: number, w: number, h: number,
+  perimeter = false,
+): WorldObject {
   return {
     id, kind: 'wall', x, y, w, h,
     solid: true, layer: 10,
     style: { fill: WALL_FILL, stroke: WALL_STROKE },
-    data: {},
+    data: { perimeter } satisfies WallData,
   }
 }
 
@@ -38,18 +46,18 @@ function furniture(id: string, x: number, y: number, w: number, h: number, label
 export function sampleDoc(): { objects: WorldObject[] } {
   return {
     objects: [
-      // substrate — non-solid, everything may sit on it
+      // site boundary — non-solid, everything may sit on it
       {
-        id: 'floor', kind: 'floor', x: 0, y: 0, w: 4400, h: 3400,
+        id: 'site', kind: 'site', x: 0, y: 0, w: 4400, h: 3400,
         layer: -10,
         style: { fill: FLOOR_FILL, stroke: '#c8bfae' },
-        data: {},
+        data: { label: '敷地' } satisfies ItemData,
       },
       // outer walls (120 mm thick) — corner cells belong to the horizontal walls
-      wall('wS', 200, 200, 4000, 120),
-      wall('wN', 200, 3080, 4000, 120),
-      wall('wW', 200, 320, 120, 2760),
-      wall('wE', 4080, 320, 120, 2760),
+      wall('wS', 200, 200, 4000, 120, true),
+      wall('wN', 200, 3080, 4000, 120, true),
+      wall('wW', 200, 320, 120, 2760, true),
+      wall('wE', 4080, 320, 120, 2760, true),
       // "|-" T junctions: end edges abut face edges
       wall('wP1', 2400, 320, 120, 1500), // rises from wS's top face
       wall('wP2', 2520, 1500, 800, 120), // leaves wP1's right face
@@ -85,6 +93,77 @@ export function sampleDoc(): { objects: WorldObject[] } {
 export function canOverlap(a: WorldObject, b: WorldObject): boolean {
   const kinds = [a.kind, b.kind].sort()
   return kinds[0] === 'door' && kinds[1] === 'wall'
+}
+
+/** Architectural areas (mm²) derived from the wall layout.
+    Perimeter walls form the building envelope; interior partitions
+    subtract from the floor areas. Conventions:
+    - site     = the 'site' object bbox (敷地面積)
+    - building = envelope of perimeter walls' outer faces (建築面積)
+    - core     = area bounded by perimeter wall core lines (床面積・壁芯)
+    - inner    = area bounded by perimeter walls' inner faces (床面積・内法)
+    - wallNet  = Σ wall footprints − door openings (壁面積・開口部除去) */
+export function areas(objects: WorldObject[]): {
+  site: number
+  building: number
+  core: number
+  inner: number
+  wallGross: number
+  openings: number
+} {
+  const siteObj = objects.find((o) => o.kind === 'site')
+  const site = siteObj ? siteObj.w * siteObj.h : 0
+  const walls = objects.filter((o) => o.kind === 'wall')
+  const doors = objects.filter((o) => o.kind === 'door')
+  const wallGross = walls.reduce((s, w) => s + w.w * w.h, 0)
+  const openings = doors.reduce(
+    (s, d) => s + walls.reduce((t, w) => t + rectOverlapArea(w, d), 0),
+    0,
+  )
+  const ext = walls.filter((w) => (w.data as WallData | undefined)?.perimeter)
+  if (ext.length === 0) return { site, building: 0, core: 0, inner: 0, wallGross, openings }
+
+  const bx0 = Math.min(...ext.map((w) => w.x))
+  const bx1 = Math.max(...ext.map((w) => w.x + w.w))
+  const by0 = Math.min(...ext.map((w) => w.y))
+  const by1 = Math.max(...ext.map((w) => w.y + w.h))
+  const cx = (bx0 + bx1) / 2
+  const cy = (by0 + by1) / 2
+
+  // classify perimeter walls by side; vertical walls bound left/right
+  const vert = ext.filter((w) => w.h >= w.w)
+  const horz = ext.filter((w) => w.h < w.w)
+  const leftW = vert.filter((w) => w.x + w.w / 2 < cx)
+  const rightW = vert.filter((w) => w.x + w.w / 2 > cx)
+  const topW = horz.filter((w) => w.y + w.h / 2 < cy)
+  const botW = horz.filter((w) => w.y + w.h / 2 > cy)
+  const innermost = (ws: WorldObject[], edge: (w: WorldObject) => number, pick: (...v: number[]) => number) =>
+    ws.length ? pick(...ws.map(edge)) : NaN
+
+  const coreX0 = innermost(leftW, (w) => w.x + w.w / 2, Math.max)
+  const coreX1 = innermost(rightW, (w) => w.x + w.w / 2, Math.min)
+  const coreY0 = innermost(topW, (w) => w.y + w.h / 2, Math.max)
+  const coreY1 = innermost(botW, (w) => w.y + w.h / 2, Math.min)
+  const inX0 = innermost(leftW, (w) => w.x + w.w, Math.max)
+  const inX1 = innermost(rightW, (w) => w.x, Math.min)
+  const inY0 = innermost(topW, (w) => w.y + w.h, Math.max)
+  const inY1 = innermost(botW, (w) => w.y, Math.min)
+
+  const coreRect = { x: coreX0, y: coreY0, w: coreX1 - coreX0, h: coreY1 - coreY0 }
+  const innerRect = { x: inX0, y: inY0, w: inX1 - inX0, h: inY1 - inY0 }
+  // interior partitions eat floor area
+  const part = walls.filter((w) => !(w.data as WallData | undefined)?.perimeter)
+  const partCore = part.reduce((s, w) => s + rectOverlapArea(coreRect, w), 0)
+  const partInner = part.reduce((s, w) => s + rectOverlapArea(innerRect, w), 0)
+
+  return {
+    site,
+    building: (bx1 - bx0) * (by1 - by0),
+    core: Math.max(0, coreRect.w * coreRect.h - partCore),
+    inner: Math.max(0, innerRect.w * innerRect.h - partInner),
+    wallGross,
+    openings,
+  }
 }
 
 export interface DimData {

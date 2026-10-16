@@ -1,9 +1,9 @@
 import { useEffect } from 'react'
-import { formatLength, rectOverlapArea } from '@kimetron/core'
+import { formatLength } from '@kimetron/core'
 import type { WorldObject } from '@kimetron/core'
 import { objectFrame, rulerTicks } from '@kimetron/dom'
 import { IsleCanvas, useEngine, useEngineVersion } from '@kimetron/react'
-import { canOverlap, FURNITURE, GRID_CFG, sampleDoc, spawn, spawnDim } from './model'
+import { areas, canOverlap, FURNITURE, GRID_CFG, sampleDoc, spawn, spawnDim } from './model'
 import type { DimData, ItemData } from './model'
 import '../../demo/src/styles.css'
 
@@ -114,17 +114,8 @@ export function App() {
     engine.setSelection([d.id])
   }
 
-  // area readouts (mm² → m²)
-  const walls = doc.objects.filter((o) => o.kind === 'wall')
-  const doors = doc.objects.filter((o) => o.kind === 'door')
-  const floorA = doc.objects
-    .filter((o) => o.kind === 'floor')
-    .reduce((s, o) => s + o.w * o.h, 0)
-  const wallA = walls.reduce((s, o) => s + o.w * o.h, 0)
-  const openA = doors.reduce(
-    (s, d) => s + walls.reduce((t, w) => t + rectOverlapArea(w, d), 0),
-    0,
-  )
+  // architectural areas derived from the wall layout (mm² → m²)
+  const a = areas(doc.objects)
   const m2 = (mm2: number) => `${(mm2 / 1e6).toFixed(2)} m²`
 
   const xTicks = rulerTicks(engine, 'x', 3000)
@@ -151,7 +142,7 @@ export function App() {
           engine={engine}
           style={{ flex: 1 }}
           renderObject={(o: WorldObject) => {
-            if (o.kind === 'floor') return null
+            if (o.kind === 'site') return null
             if (o.kind === 'wall') return <WallCore f={objectFrame(engine, o)} />
             if (o.kind === 'dim') return <DimView engine={engine} o={o} />
             const d = o.data as ItemData | undefined
@@ -198,11 +189,12 @@ export function App() {
           {formatLength(engine.cursorWorld.y, u)})
         </span>
         <span>
-          床 {m2(floorA)} ・ 壁 {m2(wallA - openA)}（開口 -{m2(openA)}）
+          敷地 {m2(a.site)} ・ 建築 {m2(a.building)} ・ 床(壁芯) {m2(a.core)} ・
+          床(内法) {m2(a.inner)} ・ 壁 {m2(a.wallGross - a.openings)}（開口 -{m2(a.openings)}）
         </span>
         <span className="sep" />
         <span className="hint">
-          solids may abut but not overlap / doors sit on walls / dims snap to wall cores
+          solids abut but never overlap / doors sit on walls / dims snap to wall cores
         </span>
       </footer>
     </div>

@@ -336,6 +336,48 @@ export function shapeAttrs(engine: Engine, o: WorldObject): ShapeAttrs | null {
   }
 }
 
+/** A screen-axis ruler tick: position in canvas px, label (major only). */
+export interface RulerTick {
+  px: number
+  label: string
+  major: boolean
+}
+
+const RULER_STEPS = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000]
+const RULER_MIN_STEP_PX = 45
+
+/** World-unit tick marks for a screen-axis ruler (major = every 10th step). */
+export function rulerTicks(engine: Engine, axis: 'x' | 'y', spanPx: number): RulerTick[] {
+  const u = unitToPx(engine.doc.units) * engine.viewport.zoom
+  const w0 = engine.screenToWorld({ x: 0, y: 0 })
+  const w1 = axis === 'x'
+    ? engine.screenToWorld({ x: spanPx, y: 0 })
+    : engine.screenToWorld({ x: 0, y: spanPx })
+  const lo = Math.min(axis === 'x' ? w0.x : w0.y, axis === 'x' ? w1.x : w1.y)
+  const hi = Math.max(axis === 'x' ? w0.x : w0.y, axis === 'x' ? w1.x : w1.y)
+  let step = RULER_STEPS[RULER_STEPS.length - 1]
+  for (const s of RULER_STEPS) {
+    if (s * u >= RULER_MIN_STEP_PX) {
+      step = s
+      break
+    }
+  }
+  const ticks: RulerTick[] = []
+  const i0 = Math.ceil(lo / step)
+  const i1 = Math.floor(hi / step)
+  for (let i = i0; i <= i1; i++) {
+    const v = i * step
+    const major = i % 10 === 0
+    const p = engine.worldToScreen(axis === 'x' ? { x: v, y: 0 } : { x: 0, y: v })
+    ticks.push({
+      px: axis === 'x' ? p.x : p.y,
+      label: major ? formatLength(v, engine.doc.units) : '',
+      major,
+    })
+  }
+  return ticks
+}
+
 /** Drag/resize HUD readout (world units), or null when idle. */
 export function hudText(engine: Engine): string | null {
   const u = engine.doc.units

@@ -71,6 +71,11 @@ export function sampleDoc(): { objects: WorldObject[] } {
       furniture('fChair', 1500, 550, 450, 450, '椅子'),
       furniture('fShelf', 2700, 400, 1400, 350, '棚'),
       furniture('fSofa', 600, 2200, 1800, 850, 'ソファ'),
+      // room-width dimension resting on the outer wall faces
+      {
+        id: 'dimRoom', kind: 'dim', x: 200, y: 60, w: 4000, h: 140,
+        layer: 12, data: { axis: 'x' } satisfies DimData,
+      },
     ],
   }
 }
@@ -80,6 +85,36 @@ export function sampleDoc(): { objects: WorldObject[] } {
 export function canOverlap(a: WorldObject, b: WorldObject): boolean {
   const kinds = [a.kind, b.kind].sort()
   return kinds[0] === 'door' && kinds[1] === 'wall'
+}
+
+export interface DimData {
+  /** 'x' = the bbox `w` is the measured span; 'y' = `h`. */
+  axis?: 'x' | 'y'
+}
+
+let dn = 0
+
+/** A dimension object spanning `b` (or a default 1000 mm span). */
+export function spawnDim(
+  axis: 'x' | 'y',
+  b: { x: number; y: number; w: number; h: number } | null,
+): WorldObject {
+  dn += 1
+  const GAP = 350
+  if (axis === 'x') {
+    return {
+      id: `dim${dn}`, kind: 'dim',
+      x: b ? b.x : 600, y: (b ? b.y : 600) - GAP,
+      w: b ? b.w : 1000, h: 300,
+      layer: 12, data: { axis: 'x' } satisfies DimData,
+    }
+  }
+  return {
+    id: `dim${dn}`, kind: 'dim',
+    x: (b ? b.x + b.w : 1600) + GAP, y: b ? b.y : 600,
+    w: 300, h: b ? b.h : 1000,
+    layer: 12, data: { axis: 'y' } satisfies DimData,
+  }
 }
 
 export const FURNITURE: Record<string, { w: number; h: number; label: string }> = {

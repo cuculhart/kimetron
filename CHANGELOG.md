@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `@kimetron/core`: `WorldObject.solid` — objects with occupancy; two
+  solids may not overlap (edge-touching is legal). `collisionMode`
+  (`'none'`/`'flag'`/`'reject'`, default `'none'`) and the
+  `engine.canOverlap` pair exception hook; `dragInvalid` marks
+  colliding gestures. `engine.collisions(rect)` query
+- `@kimetron/core`: `WorldObject.layer` — category layer ordering
+  (render = layer asc, then array order; hit-test walks the reverse);
+  `renderOrder()` helper; `Doc.grid.major` — every Nth grid cell
+- `@kimetron/dom`/`@kimetron/react`: major grid lines render bold;
+  colliding drag/resize previews show a danger outline
+- `drivers/plan`: floor-plan spike — 10 mm grid with 100 mm major
+  lines, thickness×length walls with "|-" T junctions, solid
+  furniture rejected on walls, doors allowed on walls via
+  `canOverlap`
+
 ## [0.6.0] - 2026-10-16
 
 ### Added

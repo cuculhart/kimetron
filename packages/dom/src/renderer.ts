@@ -1,5 +1,5 @@
 import type { Engine, WorldObject } from '@kimetron/core'
-import { isShapeKind } from '@kimetron/core'
+import { isShapeKind, renderOrder } from '@kimetron/core'
 import { attachInput } from './input'
 import {
   DOUBLE_INNER,
@@ -104,7 +104,8 @@ export function createRenderer(container: HTMLElement, opts: RendererOptions): R
 
   function render(): void {
     const seen = new Set<string>()
-    for (const o of engine.doc.objects) {
+    const ordered = renderOrder(engine.doc.objects)
+    for (const o of ordered) {
       seen.add(o.id)
       const isShape = isShapeKind(o.kind)
       let el = objEls.get(o.id)
@@ -122,6 +123,10 @@ export function createRenderer(container: HTMLElement, opts: RendererOptions): R
       const sel = engine.selectedIds.has(o.id)
       el.classList.toggle('ki-sel', sel)
       el.classList.toggle('ki-shape', isShape)
+      el.classList.toggle(
+        'ki-invalid',
+        engine.dragInvalid && (sel || engine.resize?.id === o.id),
+      )
       if (isShape) {
         el.style.background = ''
         el.style.borderColor = ''
@@ -181,6 +186,11 @@ export function createRenderer(container: HTMLElement, opts: RendererOptions): R
         el.remove()
         objEls.delete(id)
       }
+    }
+    // keep DOM order == paint order (all .ki-obj share z-index: 1)
+    for (const o of ordered) {
+      const el = objEls.get(o.id)
+      if (el) container.appendChild(el)
     }
 
     const selObj =

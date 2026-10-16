@@ -4,7 +4,7 @@ import { createRenderer } from '@kimetron/dom'
 const engine = new Engine({
   units: 'mm',
   origin: 'bottom-left',
-  grid: { size: 10, snap: true },
+  grid: { size: 10, snap: true, major: 10 }, // v0.7.0: bold line every 100 mm
 })
 const ports4 = () => [
   { id: 'l', fx: 0, fy: 0.5 },
@@ -37,6 +37,7 @@ engine.addObject({
 // v0.6.0: locked (selectable, not draggable), group (moves together),
 // page frame, double-stroke line
 engine.addObject({ id: 'fixed', kind: 'rect', x: 20, y: 140, w: 40, h: 20, locked: true, style: { fill: '#fef3c7', stroke: '#d97706' } })
+
 engine.addObject({ id: 'ga', kind: 'rect', x: 80, y: 140, w: 30, h: 15, group: 'pair' })
 engine.addObject({ id: 'gb', kind: 'rect', x: 80, y: 160, w: 30, h: 15, group: 'pair' })
 engine.addObject({
@@ -45,6 +46,11 @@ engine.addObject({
   style: { stroke: '#333', width: 5, double: true },
 })
 engine.doc = { ...engine.doc, page: { x: 10, y: 10, w: 230, h: 180 } }
+// v0.7.0: solid/layer — solids may abut but not overlap; layer lifts
+// 'heavy' above 'thin' despite array order
+engine.collisionMode = 'reject'
+engine.addObject({ id: 'heavy', kind: 'rect', x: 20, y: 210, w: 50, h: 20, solid: true, layer: 1, style: { fill: '#e5e0d8' } })
+engine.addObject({ id: 'thin', kind: 'rect', x: 30, y: 215, w: 50, h: 10, layer: -1, style: { fill: '#c7d7ea' } })
 
 const el = document.getElementById('canvas') as HTMLElement
 createRenderer(el, { engine })

@@ -9,6 +9,7 @@ export interface Frame {
 }
 
 const GRID_LINE = 'var(--ki-grid, rgba(40, 60, 80, 0.10))'
+const GRID_MAJOR_LINE = 'var(--ki-grid-major, rgba(40, 60, 80, 0.28))'
 
 export function gridBackground(engine: Engine): {
   backgroundImage: string
@@ -17,10 +18,23 @@ export function gridBackground(engine: Engine): {
 } {
   const { doc, viewport: vp } = engine
   const s = doc.grid.size * unitToPx(doc.units) * vp.zoom
+  const minor =
+    `linear-gradient(to right, ${GRID_LINE} 1px, transparent 1px),` +
+    `linear-gradient(to bottom, ${GRID_LINE} 1px, transparent 1px)`
+  const m = doc.grid.major
+  if (m && m > 1) {
+    const ms = s * m
+    return {
+      backgroundImage:
+        `linear-gradient(to right, ${GRID_MAJOR_LINE} 1px, transparent 1px),` +
+        `linear-gradient(to bottom, ${GRID_MAJOR_LINE} 1px, transparent 1px),` +
+        minor,
+      backgroundSize: `${ms}px ${ms}px, ${ms}px ${ms}px, ${s}px ${s}px, ${s}px ${s}px`,
+      backgroundPosition: `${vp.x}px ${vp.y}px`,
+    }
+  }
   return {
-    backgroundImage:
-      `linear-gradient(to right, ${GRID_LINE} 1px, transparent 1px),` +
-      `linear-gradient(to bottom, ${GRID_LINE} 1px, transparent 1px)`,
+    backgroundImage: minor,
     backgroundSize: `${s}px ${s}px`,
     backgroundPosition: `${vp.x}px ${vp.y}px`,
   }
@@ -377,6 +391,8 @@ export function injectStyles(): void {
 .ki-canvas { position: relative; overflow: hidden; touch-action: none; user-select: none; cursor: default; }
 .ki-obj { position: absolute; left: 0; top: 0; box-sizing: border-box; border: 1px solid var(--ki-edge, #7d8fa3); background: var(--ki-fill, rgba(125, 143, 163, 0.18)); overflow: hidden; }
 .ki-obj.ki-sel { border-color: var(--ki-sel, #3a7bd5); box-shadow: 0 0 0 1px var(--ki-sel, #3a7bd5); }
+.ki-obj.ki-invalid { border-color: var(--ki-danger, #d33); box-shadow: 0 0 0 2px var(--ki-danger, #d33); }
+.ki-obj.ki-shape.ki-invalid { border: 1px dashed var(--ki-danger, #d33); box-shadow: none; }
 .ki-marquee { position: absolute; left: 0; top: 0; border: 1px dashed var(--ki-sel, #3a7bd5); background: rgba(58, 123, 213, 0.08); pointer-events: none; }
 .ki-handle { position: absolute; width: 8px; height: 8px; margin: -4px 0 0 -4px; background: #fff; border: 1px solid var(--ki-sel, #3a7bd5); box-sizing: border-box; z-index: 10; }
 .ki-handle[hidden] { display: none; }

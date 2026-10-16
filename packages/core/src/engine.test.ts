@@ -658,6 +658,116 @@ describe('lock, group, page and connectReplace', () => {
   })
 })
 
+describe('collision, layer and major grid', () => {
+  function make(objs: WorldObject[]) {
+    const e = new Engine({ units: 'mm', origin: 'bottom-left', grid: { size: 10, snap: true } }, objs)
+    e.viewport = { x: 0, y: 500, zoom: 1 }
+    return e
+  }
+  const dragBy = (e: Engine, from: { x: number; y: number }, to: { x: number; y: number }) => {
+    e.pointerDown(e.worldToScreen(from))
+    e.pointerMove(e.worldToScreen(to))
+    e.pointerUp()
+  }
+  const wall = { id: 'w', kind: 'wall', x: 100, y: 0, w: 120, h: 20, solid: true }
+  const desk = { id: 'd', kind: 'furniture', x: 0, y: 0, w: 50, h: 30, solid: true }
+  const paper = { id: 'p', kind: 'note', x: 0, y: 50, w: 30, h: 20 } // non-solid
+
+  it('reject mode: dragging a solid onto a solid does not commit', () => {
+    const e = make([wall, desk])
+    e.collisionMode = 'reject'
+    e.pointerDown(e.worldToScreen({ x: 10, y: 10 }))
+    e.pointerMove(e.worldToScreen({ x: 110, y: 10 })) // desk lands on the wall
+    expect(e.dragInvalid).toBe(true)
+    e.pointerUp()
+    expect(e.doc.objects[1].x).toBe(0)
+    expect(e.dragInvalid).toBe(false)
+  })
+
+  it('edge-touching is legal: abutting a wall commits', () => {
+    const e = make([wall, desk])
+    e.collisionMode = 'reject'
+    // desk right edge lands exactly on wall left edge (x=100): drag dx=50
+    dragBy(e, { x: 10, y: 10 }, { x: 60, y: 10 })
+    expect(e.doc.objects[1].x).toBe(50)
+  })
+
+  it('flag mode commits but marks the gesture invalid', () => {
+    const e = make([wall, desk])
+    e.collisionMode = 'flag'
+    e.pointerDown(e.worldToScreen({ x: 10, y: 10 }))
+    e.pointerMove(e.worldToScreen({ x: 110, y: 10 }))
+    expect(e.dragInvalid).toBe(true)
+    e.pointerUp()
+    expect(e.doc.objects[1].x).toBe(100)
+  })
+
+  it('canOverlap whitelists a pair (door on wall)', () => {
+    const door = { id: 'door', kind: 'door', x: 0, y: 50, w: 80, h: 20, solid: true }
+    const e = make([wall, door])
+    e.collisionMode = 'reject'
+    e.canOverlap = (a, b) => a.kind === 'door' && b.kind === 'wall'
+    dragBy(e, { x: 10, y: 60 }, { x: 110, y: 10 })
+    expect(e.doc.objects[1].x).toBe(100)
+  })
+
+  it('non-solid movers and non-solid obstacles never collide', () => {
+    const e = make([wall, paper])
+    e.collisionMode = 'reject'
+    dragBy(e, { x: 10, y: 55 }, { x: 110, y: 5 }) // paper is not solid → free
+    expect(e.doc.objects[1].x).toBe(100)
+    const e2 = make([wall, paper])
+    e2.collisionMode = 'reject'
+    dragBy(e2, { x: 110, y: 10 }, { x: 10, y: 60 }) // wall onto non-solid paper → free
+    expect(e2.doc.objects[0].x).toBe(0)
+  })
+
+  it('resize into a solid is rejected', () => {
+    const e = make([wall, { id: 'd', kind: 'furniture', x: 0, y: 0, w: 50, h: 20, solid: true }])
+    e.collisionMode = 'reject'
+    e.startResize(e.worldToScreen({ x: 0, y: 0 }), 'd', { x: 1, y: 0 })
+    e.pointerMove(e.worldToScreen({ x: 110, y: 10 }))
+    expect(e.dragInvalid).toBe(true)
+    e.pointerUp()
+    expect(e.doc.objects[1].w).toBe(50)
+  })
+
+  it('collisions() returns intersecting solids only', () => {
+    const e = make([wall, desk, paper])
+    const hits = e.collisions({ x: 110, y: 5, w: 50, h: 20 }).map((o) => o.id)
+    expect(hits).toEqual(['w']) // paper is non-solid; desk does not intersect
+    const e2 = make([
+      wall,
+      { id: 'd2', kind: 'furniture', x: 130, y: 0, w: 50, h: 20, solid: true },
+    ])
+    expect(e2.collisions({ x: 0, y: 0, w: 300, h: 30 }).map((o) => o.id)).toEqual(['w', 'd2'])
+  })
+
+  it('layer orders hit-testing regardless of array order', () => {
+    const e = make([
+      { id: 'top', kind: 'rect', x: 0, y: 0, w: 40, h: 40, layer: 10 },
+      { id: 'bottom', kind: 'rect', x: 0, y: 0, w: 40, h: 40, layer: -10 },
+    ])
+    // 'bottom' is last in array order (would win without layers),
+    // but layer 10 paints 'top' above it
+    expect(e.objectAt(e.worldToScreen({ x: 20, y: 20 }))?.id).toBe('top')
+  })
+
+  it('serializes solid/layer/grid.major', () => {
+    const doc = createDocument({ units: 'mm', origin: 'top-left', grid: { size: 10, snap: true, major: 10 } })
+    const d = {
+      ...doc,
+      objects: [
+        { id: 'a', kind: 'rect', x: 1, y: 2, w: 3, h: 4, solid: true, layer: 5 },
+        { id: 'b', kind: 'rect', x: 0, y: 0, w: 1, h: 1 },
+      ],
+    }
+    const out = deserializeDoc(serializeDoc(d))
+    expect(out).toEqual(d)
+    expect(out.grid.major).toBe(10)
+  })
+})
+
 describe('doc serialize', () => {
   it('roundtrips units/origin/grid/objects', () => {
     const doc = createDocument({ units: 'inch', origin: 'top-left', grid: { size: 0.5, snap: false } })

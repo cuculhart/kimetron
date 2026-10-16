@@ -1,6 +1,6 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
-import { Engine, isShapeKind } from '@kimetron/core'
+import { Engine, isShapeKind, renderOrder } from '@kimetron/core'
 import type { Doc, WorldConfig, WorldObject } from '@kimetron/core'
 import { attachInput, DOUBLE_INNER, doubleWidths, edgeAttrs, edgeMarkerDefs, gridBackground, handlePoints, hudText, injectStyles, marqueeFrame, objectFrame, pageFrame, portPoints, routePathD, shapeAttrs, shapeCapMarkerDefs } from '@kimetron/dom'
 
@@ -143,7 +143,7 @@ export function IsleCanvas({
           />
         )}
       </svg>
-      {engine.doc.objects.map((o) => {
+      {renderOrder(engine.doc.objects).map((o) => {
         const f = objectFrame(engine, o)
         const sel = engine.selectedIds.has(o.id)
         const shape = isShapeKind(o.kind) ? shapeAttrs(engine, o) : null
@@ -152,7 +152,10 @@ export function IsleCanvas({
             key={o.id}
             className={
               (isShapeKind(o.kind) ? 'ki-obj ki-shape' : 'ki-obj') +
-              (sel ? ' ki-sel' : '')
+              (sel ? ' ki-sel' : '') +
+              (engine.dragInvalid && (sel || engine.resize?.id === o.id)
+                ? ' ki-invalid'
+                : '')
             }
             style={{
               transform: `translate(${f.left}px, ${f.top}px)`,

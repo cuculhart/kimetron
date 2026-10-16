@@ -8,6 +8,7 @@ import {
   removeEdges,
   removeObjects,
   reorderObjects,
+  renderOrder,
   resizeObject,
   type ZOrder,
 } from './doc'
@@ -74,6 +75,15 @@ export class Engine {
   /** Optional hook — edge ids removed when a connection commits, in the
       same commit (e.g. replacing the wire on an occupied calc input). */
   connectReplace?: (from: EdgeEndpoint, to: EdgeEndpoint) => Iterable<string>
+  /** Collision handling for `solid` objects:
+      'none' = physics-free, 'flag' = mark colliding gestures via
+      `dragInvalid` but commit anyway, 'reject' = refuse the commit. */
+  collisionMode: 'none' | 'flag' | 'reject' = 'none'
+  /** Optional exception hook — return true to allow a pair of solids
+      to overlap (e.g. a door object placed on a wall). */
+  canOverlap?: (a: WorldObject, b: WorldObject) => boolean
+  /** True while the drag/resize hover position illegally overlaps a solid. */
+  dragInvalid = false
   /** Extra snap candidates injected by the app (page frames, guides). */
   snapExtra: { xs: number[]; ys: number[] } = { xs: [], ys: [] }
   marquee: Rect | null = null
@@ -329,11 +339,24 @@ export class Engine {
   objectAt(screenPt: Pt): WorldObject | null {
     const w = this.screenToWorld(screenPt)
     const tol = HIT_TOL_PX / (unitToPx(this.doc.units) * this.viewport.zoom)
-    for (let i = this.doc.objects.length - 1; i >= 0; i--) {
-      const o = this.doc.objects[i]
-      if (hitObject(o, w, tol)) return o
+    const objs = renderOrder(this.doc.objects)
+    for (let i = objs.length - 1; i >= 0; i--) {
+      if (hitObject(objs[i], w, tol)) return objs[i]
     }
     return null
+  }
+
+  /** Solid objects intersecting `rect` — edge-touching is not an overlap. */
+  collisions(rect: Rect, exclude?: ReadonlySet<string>): WorldObject[] {
+    return this.doc.objects.filter(
+      (o) => o.solid === true && !exclude?.has(o.id) && rectsIntersect(rect, rectOf(o)),
+    )
+  }
+
+  /** Would `mover` at `rect` illegally overlap a non-excluded solid? */
+  private blockedBySolid(mover: WorldObject, rect: Rect, exclude: ReadonlySet<string>): boolean {
+    if (!mover.solid) return false
+    return this.collisions(rect, exclude).some((o) => !this.canOverlap?.(mover, o))
   }
 
   /** Nearest port to a screen point within PORT_TOL_PX, as an edge endpoint. */
@@ -495,6 +518,20 @@ export class Engine {
         dy = Math.round(ay / g.size) * g.size - this.dragAnchor.y
       }
       this.dragDelta = { x: dx, y: dy }
+      if (this.collisionMode !== 'none') {
+        const moving = new Set(this.dragIds)
+        this.dragInvalid = this.dragIds.some((id) => {
+          const o = this.doc.objects.find((o) => o.id === id)
+          return (
+            o !== undefined &&
+            this.blockedBySolid(
+              o,
+              { x: o.x + dx, y: o.y + dy, w: o.w, h: o.h },
+              moving,
+            )
+          )
+        })
+      }
       this.emit()
       return
     }
@@ -559,6 +596,12 @@ export class Engine {
         r.h = Math.max(Math.abs(y1 - wy), MIN_SIZE)
       }
       this.resize = { id: this.resizeId, rect: r }
+      if (this.collisionMode !== 'none') {
+        const mover = this.doc.objects.find((o) => o.id === this.resizeId)
+        this.dragInvalid =
+          mover !== undefined &&
+          this.blockedBySolid(mover, r, new Set([this.resizeId]))
+      }
       this.emit()
       return
     }
@@ -589,14 +632,15 @@ export class Engine {
   }
 
   pointerUp(): void {
-    if (this.mode === 'drag' && this.dragDelta) {
+    const blocked = this.collisionMode === 'reject' && this.dragInvalid
+    if (this.mode === 'drag' && this.dragDelta && !blocked) {
       const { x: dx, y: dy } = this.dragDelta
       if (dx !== 0 || dy !== 0) {
         this.doc = moveObjects(this.doc, this.dragIds, dx, dy)
         this.emitDoc()
       }
     }
-    if (this.mode === 'resize' && this.resize && this.resizeOrig) {
+    if (this.mode === 'resize' && this.resize && this.resizeOrig && !blocked) {
       const r = this.resize.rect
       const o = this.resizeOrig
       if (r.x !== o.x || r.y !== o.y || r.w !== o.w || r.h !== o.h) {
@@ -623,6 +667,7 @@ export class Engine {
     this.mode = 'idle'
     this.dragDelta = null
     this.dragIds = []
+    this.dragInvalid = false
     this.guides = []
     this.connect = null
     this.resize = null

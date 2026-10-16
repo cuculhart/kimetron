@@ -5,7 +5,11 @@ export function createDocument(cfg: WorldConfig = {}): Doc {
     schemaVersion: 2,
     units: cfg.units ?? 'mm',
     origin: cfg.origin ?? 'bottom-left',
-    grid: { size: cfg.grid?.size ?? 10, snap: cfg.grid?.snap ?? true },
+    grid: {
+      size: cfg.grid?.size ?? 10,
+      snap: cfg.grid?.snap ?? true,
+      ...(typeof cfg.grid?.major === 'number' ? { major: cfg.grid.major } : {}),
+    },
     objects: [],
     edges: [],
   }
@@ -67,6 +71,14 @@ export function edgeEndpoints(doc: Doc, e: Edge): { from: Pt; to: Pt } | null {
   const from = endpointPos(doc, e.from)
   const to = endpointPos(doc, e.to)
   return from && to ? { from, to } : null
+}
+
+/** Objects in paint order — `layer` asc, then array order (last = topmost). */
+export function renderOrder(objects: WorldObject[]): WorldObject[] {
+  return objects
+    .map((o, i) => ({ o, i }))
+    .sort((a, b) => (a.o.layer ?? 0) - (b.o.layer ?? 0) || a.i - b.i)
+    .map(({ o }) => o)
 }
 
 export type ZOrder = 'front' | 'back' | 'forward' | 'backward'
@@ -180,6 +192,8 @@ export function deserializeDoc(json: string): Doc {
         : {}),
       ...(typeof o.group === 'string' ? { group: o.group } : {}),
       ...(o.locked === true ? { locked: true } : {}),
+      ...(o.solid === true ? { solid: true } : {}),
+      ...(typeof o.layer === 'number' ? { layer: o.layer } : {}),
       ...(o.data !== undefined ? { data: o.data } : {}),
     })),
     edges: Array.isArray(raw.edges)

@@ -38,6 +38,7 @@ export {
   removeObjects,
   removeEdges,
   reorderObjects,
+  renderOrder,
   resizeObject,
   serializeDoc,
   deserializeDoc,

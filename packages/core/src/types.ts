@@ -4,6 +4,9 @@ export type Origin = 'bottom-left' | 'top-left'
 export interface GridConfig {
   size: number
   snap: boolean
+  /** Major grid interval in cells — every Nth grid line renders bold
+      (e.g. size=10, major=10 → a bold line every 100 mm). */
+  major?: number
 }
 
 export interface WorldConfig {
@@ -83,6 +86,12 @@ export interface WorldObject {
   group?: string
   /** Locked objects can be selected but not moved/resized/removed. */
   locked?: boolean
+  /** Objects with occupancy — two solids may not overlap
+      (see Engine.collisionMode / canOverlap). */
+  solid?: boolean
+  /** Category layer — render order = layer asc, then array order;
+      hit-testing walks the reverse order. */
+  layer?: number
   data?: unknown
 }
 

@@ -6,7 +6,7 @@ import './styles.css'
 
 const UNITS: Unit[] = ['mm', 'cm', 'm', 'inch', 'px']
 const ORIGINS: Origin[] = ['bottom-left', 'top-left']
-const ROUTES: EdgeRoute[] = ['straight', 'orthogonal', 'bezier']
+const ROUTES: EdgeRoute[] = ['straight', 'orthogonal', 'smoothstep', 'bezier']
 
 /** 4 ports at the edge midpoints (normalized fractions). */
 const ports4 = (): Port[] => [
@@ -38,6 +38,7 @@ export function App() {
   useEffect(() => {
     if (seeded.current) return
     seeded.current = true
+    engine.connectEdge = { markerEnd: 'arrow' }
     engine.addObject({ id: 'a', kind: 'rect', x: 10, y: 10, w: 80, h: 40, ports: ports4() })
     engine.addObject({ id: 'b', kind: 'rect', x: 110, y: 60, w: 50, h: 30, ports: ports4() })
     engine.addObject({ id: 'c', kind: 'rect', x: 40, y: 110, w: 60, h: 50, ports: ports4() })

@@ -145,6 +145,14 @@ export function deserializeDoc(json: string): Doc {
             })),
           }
         : {}),
+      ...(o.style && typeof o.style === 'object'
+        ? {
+            style: {
+              ...(typeof o.style.fill === 'string' ? { fill: o.style.fill } : {}),
+              ...(typeof o.style.stroke === 'string' ? { stroke: o.style.stroke } : {}),
+            },
+          }
+        : {}),
       ...(o.data !== undefined ? { data: o.data } : {}),
     })),
     edges: Array.isArray(raw.edges)
@@ -155,6 +163,21 @@ export function deserializeDoc(json: string): Doc {
             from: { obj: String(e.from.obj), ...(e.from.port ? { port: String(e.from.port) } : {}) },
             to: { obj: String(e.to.obj), ...(e.to.port ? { port: String(e.to.port) } : {}) },
             ...(e.route ? { route: e.route } : {}),
+            ...(e.style && typeof e.style === 'object'
+              ? {
+                  style: {
+                    ...(typeof e.style.color === 'string' ? { color: e.style.color } : {}),
+                    ...(typeof e.style.width === 'number' ? { width: e.style.width } : {}),
+                    ...(Array.isArray(e.style.dash) ? { dash: e.style.dash.map(Number) } : {}),
+                  },
+                }
+              : {}),
+            ...(e.markerStart === 'arrow' || e.markerStart === 'dot'
+              ? { markerStart: e.markerStart }
+              : {}),
+            ...(e.markerEnd === 'arrow' || e.markerEnd === 'dot'
+              ? { markerEnd: e.markerEnd }
+              : {}),
             ...(e.label !== undefined ? { label: String(e.label) } : {}),
           }))
       : [],

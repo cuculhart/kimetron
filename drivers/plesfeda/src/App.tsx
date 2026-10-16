@@ -1,9 +1,9 @@
-import { useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { formatLength } from '@kimetron/core'
 import type { WorldObject } from '@kimetron/core'
 import { IsleCanvas, useEngine, useEngineVersion } from '@kimetron/react'
 import { layoutTasks, SAMPLE_TASKS } from './model'
-import type { TaskData } from './model'
+import type { Orientation, TaskData } from './model'
 import '../../demo/src/styles.css'
 
 export function App() {
@@ -13,13 +13,37 @@ export function App() {
     grid: { size: 5, snap: true },
   })
   useEngineVersion(engine)
+  const [orientation, setOrientation] = useState<Orientation>('h')
 
   useEffect(() => {
-    const { objects, edges } = layoutTasks(SAMPLE_TASKS)
-    engine.setDoc({ ...engine.doc, objects, edges })
-    engine.setSelection([])
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // hand-drawn links become dependency edges; a second edge between the
+    // same task pair is meaningless, so the policy hook rejects it
+    engine.connectEdge = {
+      route: 'bezier',
+      style: { color: '#b45309', width: 1.8 },
+      markerEnd: 'arrow',
+    }
+    engine.canConnect = (from, to) =>
+      !engine.doc.edges.some((e) => e.from.obj === from.obj && e.to.obj === to.obj)
   }, [engine])
+
+  const relayout = useCallback(() => {
+    const { objects, edges } = layoutTasks(SAMPLE_TASKS, orientation)
+    const live = new Map(engine.doc.objects.map((o) => [o.id, o]))
+    engine.setDoc({
+      ...engine.doc,
+      // keep objects the user added; re-derive positions for task nodes
+      objects: engine.doc.objects
+        .map((o) => {
+          const fresh = objects.find((f) => f.id === o.id)
+          return fresh ? { ...o, x: fresh.x, y: fresh.y } : o
+        })
+        .concat(objects.filter((f) => !live.has(f.id))),
+      edges,
+    })
+  }, [engine, orientation])
+
+  useEffect(() => relayout(), [relayout])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -34,20 +58,6 @@ export function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [engine])
 
-  const relayout = () => {
-    const { objects, edges } = layoutTasks(SAMPLE_TASKS)
-    const live = new Map(engine.doc.objects.map((o) => [o.id, o]))
-    engine.setDoc({
-      ...engine.doc,
-      // keep objects the user added; re-derive positions for task nodes
-      objects: engine.doc.objects.map((o) => {
-        const fresh = objects.find((f) => f.id === o.id)
-        return fresh ? { ...o, x: fresh.x, y: fresh.y } : o
-      }).concat(objects.filter((f) => !live.has(f.id))),
-      edges,
-    })
-  }
-
   const { doc } = engine
   const u = doc.units
 
@@ -57,6 +67,9 @@ export function App() {
         <strong><a href="../" style={{ color: 'inherit', textDecoration: 'none' }}>Kimetron Isle</a></strong>
         <span className="sep" />
         <span className="hint">plesfeda-style driver (spike)</span>
+        <button onClick={() => setOrientation((o) => (o === 'h' ? 'v' : 'h'))}>
+          {orientation === 'h' ? 'horizontal' : 'vertical'}
+        </button>
         <button onClick={relayout}>relayout</button>
         <button onClick={() => engine.undo()} disabled={!engine.canUndo}>undo</button>
         <button onClick={() => engine.redo()} disabled={!engine.canRedo}>redo</button>
@@ -84,7 +97,7 @@ export function App() {
         <span>tasks {doc.objects.length}</span>
         <span>edges {doc.edges.length}</span>
         <span className="sep" />
-        <span className="hint">WBS numbers & layout are derived / dep edges follow nodes / drag to move (snaps to grid)</span>
+        <span className="hint">WBS & layout derived / hier edges follow depth axis / dep edges pick facing sides / drag snaps to grid</span>
       </footer>
     </div>
   )

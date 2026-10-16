@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `@kimetron/core`: edge/object styling as data — `Edge.style`
+  (`color`, `width` in screen px, `dash`), `Edge.markerStart` /
+  `markerEnd` (`'arrow'` | `'dot'`), `WorldObject.style`
+  (`fill`, `stroke`); all serialized with the document
+- `@kimetron/core`: new route `smoothstep` (orthogonal geometry,
+  rounded corners at render), `engine.canConnect` policy hook
+  (rejects commit and flags `connect.invalid`), `engine.connectEdge`
+  defaults stamped onto gesture-created edges
+- `@kimetron/dom`/`@kimetron/react`: edge rendering maps style to
+  stroke attributes, generates SVG `<marker>` defs per edge,
+  smoothstep corner rounding; object `style` maps to fill/border;
+  invalid connect preview styling
+- `drivers/` is now a multi-page app (launcher + demo + vanilla +
+  `plesfeda` spike with derived WBS layout, hierarchy/dependency
+  edge semantics, h/v orientation toggle)
+
 ## [0.3.0] - 2026-10-16
 
 ### Added

@@ -12,7 +12,7 @@ sethera / plesfeda が将来 Kimetron 上に載るとしたら、この位置に
 | `index.html` | ドライバ一覧（launcher） |
 | `demo/` | プレイグラウンド。origin / units / grid / snap / リサイズ / オブジェクトスナップ / Undo / エッジを切り替えてワールド座標モデルを体感する検証用アプリ |
 | `demo/vanilla.html` | React 無しの最小ページ（`createRenderer`） |
-| `plesfeda/` | plesfeda 移植 spike。WBS ツリー + 依存エッジを Kimetron で再現し、移植ギャップを洗い出す |
+| `plesfeda/` | plesfeda 移植 spike。WBS ツリー + 依存エッジを Kimetron で再現し、移植ギャップを洗い出す。階層=smoothstep 灰 / dep=bezier 茶+矢印 / critical=橙太線 / `canConnect` で重複拒否 |
 
 ドライバを追加するときは、サブフォルダに `index.html` + `src/` を置き、
 `vite.config.ts` の input とこのテーブルに1行足す。

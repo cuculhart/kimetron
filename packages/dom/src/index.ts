@@ -1,5 +1,5 @@
-export { gridBackground, objectFrame, marqueeFrame, handlePoints, screenDirToWorld, portPoints, edgePathD, routePathD, injectStyles } from './style'
-export type { Frame, HandleDir, HandlePoint } from './style'
+export { gridBackground, objectFrame, marqueeFrame, handlePoints, screenDirToWorld, portPoints, edgePathD, edgeAttrs, edgeMarkerDefs, markerId, routePathD, injectStyles } from './style'
+export type { EdgeAttrs, EdgeMarkerDef, Frame, HandleDir, HandlePoint } from './style'
 export { attachInput } from './input'
 export { createRenderer } from './renderer'
 export type { Renderer, RendererOptions } from './renderer'

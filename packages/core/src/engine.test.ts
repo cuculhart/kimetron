@@ -370,6 +370,64 @@ describe('edges and ports', () => {
     expect(pos?.x).toBeCloseTo(o.x + o.w)
   })
 
+  it('canConnect rejects the commit and flags hover as invalid', () => {
+    const e = make()
+    e.canConnect = (_from, to) => to.obj !== 'b'
+    e.startConnect(e.worldToScreen({ x: 40, y: 15 }), 'a', 'r')
+    e.pointerMove(e.worldToScreen({ x: 99, y: 16 }))
+    expect(e.connect?.hover).toEqual({ obj: 'b', port: 'l' })
+    expect(e.connect?.invalid).toBe(true)
+    e.pointerUp()
+    expect(e.doc.edges).toHaveLength(0)
+  })
+
+  it('connectEdge stamps style/markers onto gesture-created edges', () => {
+    const e = make()
+    e.connectEdge = {
+      route: 'bezier',
+      style: { color: '#b45309', width: 1.8 },
+      markerEnd: 'arrow',
+    }
+    e.startConnect(e.worldToScreen({ x: 40, y: 15 }), 'a', 'r')
+    e.pointerMove(e.worldToScreen({ x: 99, y: 16 }))
+    e.pointerUp()
+    expect(e.doc.edges[0]).toMatchObject({
+      route: 'bezier',
+      style: { color: '#b45309', width: 1.8 },
+      markerEnd: 'arrow',
+    })
+  })
+
+  it('serializes edge style/markers and object style', () => {
+    const e = make()
+    e.connectEdge = { style: { color: 'var(--dep)', width: 2, dash: [4, 4] }, markerEnd: 'dot' }
+    e.startConnect(e.worldToScreen({ x: 40, y: 15 }), 'a', 'r')
+    e.pointerMove(e.worldToScreen({ x: 99, y: 16 }))
+    e.pointerUp()
+    e.doc = {
+      ...e.doc,
+      objects: e.doc.objects.map((o) =>
+        o.id === 'a' ? { ...o, style: { fill: '#fef3c7', stroke: '#e0d77a' } } : o,
+      ),
+    }
+    const out = deserializeDoc(serializeDoc(e.doc))
+    expect(out.edges).toEqual(e.doc.edges)
+    expect(out.objects[0].style).toEqual({ fill: '#fef3c7', stroke: '#e0d77a' })
+  })
+
+  it('smoothstep resolves to the same geometry as orthogonal', () => {
+    const e = make()
+    e.connectRoute = 'smoothstep'
+    e.startConnect(e.worldToScreen({ x: 40, y: 15 }), 'a', 'r')
+    e.pointerMove(e.worldToScreen({ x: 99, y: 16 }))
+    e.pointerUp()
+    expect(e.doc.edges[0].route).toBe('smoothstep')
+    // hit test works on smoothstep (midpoint click selects it)
+    e.pointerDown(e.worldToScreen({ x: 70, y: 15 }))
+    e.pointerUp()
+    expect(e.selectedIds.has(e.doc.edges[0].id)).toBe(true)
+  })
+
   it('serializes edges and reads v1 docs without them', () => {
     const e = make()
     e.startConnect(e.worldToScreen({ x: 40, y: 15 }), 'a', 'r')

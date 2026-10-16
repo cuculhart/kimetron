@@ -8,7 +8,8 @@ export type EdgeGeom =
 /**
  * Compute the route between two world points.
  * straight: direct line. orthogonal: single bend at the midpoint of the
- * dominant axis. bezier: cubic with controls along the dominant axis.
+ * dominant axis. smoothstep: same points as orthogonal (the renderer
+ * rounds the corners). bezier: cubic with controls along the dominant axis.
  */
 export function edgeGeom(from: Pt, to: Pt, route: EdgeRoute = 'straight'): EdgeGeom {
   if (route === 'bezier') {
@@ -24,7 +25,7 @@ export function edgeGeom(from: Pt, to: Pt, route: EdgeRoute = 'straight'): EdgeG
         : { x: to.x, y: to.y - dy * 0.5 }
     return { kind: 'bezier', pts: [from, c1, c2, to] }
   }
-  if (route === 'orthogonal') {
+  if (route === 'orthogonal' || route === 'smoothstep') {
     const mid =
       Math.abs(to.x - from.x) >= Math.abs(to.y - from.y)
         ? { x: (from.x + to.x) / 2, y: from.y }

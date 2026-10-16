@@ -1,7 +1,8 @@
 import type { Engine, WorldObject } from '@kimetron/core'
 import { attachInput } from './input'
 import {
-  edgePathD,
+  edgeAttrs,
+  edgeMarkerDefs,
   handlePoints,
   injectStyles,
   marqueeFrame,
@@ -9,6 +10,36 @@ import {
   portPoints,
   routePathD,
 } from './style'
+
+const SVG_NS = 'http://www.w3.org/2000/svg'
+
+function markerEl(def: { id: string; kind: string; color: string }): SVGMarkerElement {
+  const m = document.createElementNS(SVG_NS, 'marker')
+  m.setAttribute('id', def.id)
+  m.setAttribute('markerUnits', 'userSpaceOnUse')
+  m.setAttribute('orient', 'auto-start-reverse')
+  let glyph: SVGElement
+  if (def.kind === 'arrow') {
+    m.setAttribute('markerWidth', '10')
+    m.setAttribute('markerHeight', '8')
+    m.setAttribute('refX', '9')
+    m.setAttribute('refY', '4')
+    glyph = document.createElementNS(SVG_NS, 'path')
+    glyph.setAttribute('d', 'M 0 0 L 10 4 L 0 8 z')
+  } else {
+    m.setAttribute('markerWidth', '8')
+    m.setAttribute('markerHeight', '8')
+    m.setAttribute('refX', '4')
+    m.setAttribute('refY', '4')
+    glyph = document.createElementNS(SVG_NS, 'circle')
+    glyph.setAttribute('cx', '4')
+    glyph.setAttribute('cy', '4')
+    glyph.setAttribute('r', '3')
+  }
+  glyph.style.fill = def.color
+  m.appendChild(glyph)
+  return m
+}
 
 export interface RendererOptions {
   engine: Engine
@@ -73,7 +104,10 @@ export function createRenderer(container: HTMLElement, opts: RendererOptions): R
       el.style.transform = `translate(${f.left}px, ${f.top}px)`
       el.style.width = `${f.width}px`
       el.style.height = `${f.height}px`
-      el.classList.toggle('ki-sel', engine.selectedIds.has(o.id))
+      const sel = engine.selectedIds.has(o.id)
+      el.classList.toggle('ki-sel', sel)
+      el.style.background = o.style?.fill ?? ''
+      el.style.borderColor = sel ? '' : (o.style?.stroke ?? '')
     }
     for (const [id, el] of objEls) {
       if (!seen.has(id)) {
@@ -100,22 +134,34 @@ export function createRenderer(container: HTMLElement, opts: RendererOptions): R
       for (const el of handleEls) el.hidden = true
     }
 
+    const defs = document.createElementNS(SVG_NS, 'defs')
+    for (const e of engine.doc.edges) {
+      for (const m of edgeMarkerDefs(engine, e)) defs.appendChild(markerEl(m))
+    }
     const edgeEls = engine.doc.edges.flatMap((e) => {
-      const d = edgePathD(engine, e)
-      if (!d) return []
-      const p = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+      const a = edgeAttrs(engine, e)
+      if (!a) return []
+      const p = document.createElementNS(SVG_NS, 'path')
       p.setAttribute('class', engine.selectedIds.has(e.id) ? 'ki-edge ki-sel' : 'ki-edge')
-      p.setAttribute('d', d)
+      p.setAttribute('d', a.d)
+      if (a.stroke) p.setAttribute('stroke', a.stroke)
+      if (a.strokeWidth) p.setAttribute('stroke-width', String(a.strokeWidth))
+      if (a.strokeDasharray) p.setAttribute('stroke-dasharray', a.strokeDasharray)
+      if (a.markerStart) p.setAttribute('marker-start', a.markerStart)
+      if (a.markerEnd) p.setAttribute('marker-end', a.markerEnd)
       return [p]
     })
     const preview = engine.connectPreview()
     if (preview) {
-      const p = document.createElementNS('http://www.w3.org/2000/svg', 'path')
-      p.setAttribute('class', 'ki-edge-preview')
+      const p = document.createElementNS(SVG_NS, 'path')
+      p.setAttribute(
+        'class',
+        engine.connect?.invalid ? 'ki-edge-preview ki-invalid' : 'ki-edge-preview',
+      )
       p.setAttribute('d', routePathD(engine, preview.from, preview.to, 'straight'))
       edgeEls.push(p)
     }
-    edgeSvg.replaceChildren(...edgeEls)
+    edgeSvg.replaceChildren(defs, ...edgeEls)
 
     portLayer.replaceChildren(
       ...engine.doc.objects.flatMap((o) =>

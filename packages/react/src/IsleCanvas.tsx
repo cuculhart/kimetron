@@ -2,7 +2,7 @@ import { useEffect, useRef, useSyncExternalStore } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { Engine } from '@kimetron/core'
 import type { Doc, WorldConfig, WorldObject } from '@kimetron/core'
-import { attachInput, edgePathD, gridBackground, handlePoints, injectStyles, marqueeFrame, objectFrame, portPoints, routePathD } from '@kimetron/dom'
+import { attachInput, edgeAttrs, edgeMarkerDefs, gridBackground, handlePoints, injectStyles, marqueeFrame, objectFrame, portPoints, routePathD } from '@kimetron/dom'
 
 export function useEngine(cfg?: WorldConfig): Engine {
   const ref = useRef<Engine | null>(null)
@@ -75,34 +75,66 @@ export function IsleCanvas({
       style={{ ...gridBackground(engine), ...style }}
     >
       <svg className="ki-edges">
+        <defs>
+          {engine.doc.edges.flatMap((e) =>
+            edgeMarkerDefs(engine, e).map((m) => (
+              <marker
+                key={m.id}
+                id={m.id}
+                markerUnits="userSpaceOnUse"
+                orient="auto-start-reverse"
+                markerWidth={m.kind === 'arrow' ? 10 : 8}
+                markerHeight={8}
+                refX={m.kind === 'arrow' ? 9 : 4}
+                refY={4}
+              >
+                {m.kind === 'arrow' ? (
+                  <path d="M 0 0 L 10 4 L 0 8 z" style={{ fill: m.color }} />
+                ) : (
+                  <circle cx={4} cy={4} r={3} style={{ fill: m.color }} />
+                )}
+              </marker>
+            )),
+          )}
+        </defs>
         {engine.doc.edges.map((e) => {
-          const d = edgePathD(engine, e)
-          if (!d) return null
+          const a = edgeAttrs(engine, e)
+          if (!a) return null
           return (
             <path
               key={e.id}
               className={engine.selectedIds.has(e.id) ? 'ki-edge ki-sel' : 'ki-edge'}
-              d={d}
+              d={a.d}
+              stroke={a.stroke}
+              strokeWidth={a.strokeWidth}
+              strokeDasharray={a.strokeDasharray}
+              markerStart={a.markerStart}
+              markerEnd={a.markerEnd}
             />
           )
         })}
         {connectPreview && (
           <path
-            className="ki-edge-preview"
+            className={
+              engine.connect?.invalid ? 'ki-edge-preview ki-invalid' : 'ki-edge-preview'
+            }
             d={routePathD(engine, connectPreview.from, connectPreview.to, 'straight')}
           />
         )}
       </svg>
       {engine.doc.objects.map((o) => {
         const f = objectFrame(engine, o)
+        const sel = engine.selectedIds.has(o.id)
         return (
           <div
             key={o.id}
-            className={engine.selectedIds.has(o.id) ? 'ki-obj ki-sel' : 'ki-obj'}
+            className={sel ? 'ki-obj ki-sel' : 'ki-obj'}
             style={{
               transform: `translate(${f.left}px, ${f.top}px)`,
               width: f.width,
               height: f.height,
+              background: o.style?.fill,
+              borderColor: sel ? undefined : o.style?.stroke,
             }}
           >
             {renderObject ? renderObject(o) : o.id}

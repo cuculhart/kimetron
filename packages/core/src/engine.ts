@@ -58,10 +58,16 @@ export class Engine {
   dragDelta: Pt | null = null
   resize: { id: string; rect: Rect } | null = null
   guides: Guide[] = []
-  /** In-progress connect gesture: source endpoint and hovered target (if any). */
-  connect: { from: EdgeEndpoint; hover: EdgeEndpoint | null } | null = null
+  /** In-progress connect gesture: source endpoint and hovered target (if any).
+      `invalid` is set when the hovered endpoint fails `canConnect`. */
+  connect: { from: EdgeEndpoint; hover: EdgeEndpoint | null; invalid: boolean } | null = null
   /** Route assigned to edges created by the connect gesture. */
   connectRoute: Edge['route'] = 'straight'
+  /** Defaults merged into edges created by the connect gesture
+      (route/style/markers/label; id/from/to are always taken from the gesture). */
+  connectEdge?: Partial<Edge>
+  /** Optional policy hook — return false to reject a connection (commit and hover are blocked). */
+  canConnect?: (from: EdgeEndpoint, to: EdgeEndpoint) => boolean
   marquee: Rect | null = null
   cursorWorld: Pt = { x: 0, y: 0 }
   version = 0
@@ -334,7 +340,7 @@ export class Engine {
     const o = this.doc.objects.find((o) => o.id === obj)
     if (!o) return
     this.mode = 'connect'
-    this.connect = { from: port ? { obj, port } : { obj }, hover: null }
+    this.connect = { from: port ? { obj, port } : { obj }, hover: null, invalid: false }
     this.cursorWorld = this.screenToWorld(pt)
   }
 
@@ -509,9 +515,11 @@ export class Engine {
 
     if (this.mode === 'connect' && this.connect) {
       const hover = this.portAt(pt)
+      const h = hover && hover.obj !== this.connect.from.obj ? hover : null
       this.connect = {
         ...this.connect,
-        hover: hover && hover.obj !== this.connect.from.obj ? hover : null,
+        hover: h,
+        invalid: h !== null && !!this.canConnect && !this.canConnect(this.connect.from, h),
       }
       this.emit()
       return
@@ -546,12 +554,13 @@ export class Engine {
         this.emitDoc()
       }
     }
-    if (this.mode === 'connect' && this.connect?.hover) {
+    if (this.mode === 'connect' && this.connect?.hover && !this.connect.invalid) {
       const edge: Edge = {
+        ...this.connectEdge,
         id: this.nextEdgeId(),
         from: this.connect.from,
         to: this.connect.hover,
-        ...(this.connectRoute ? { route: this.connectRoute } : {}),
+        route: this.connectEdge?.route ?? this.connectRoute,
       }
       this.doc = addEdge(this.doc, edge)
       this.emitDoc()

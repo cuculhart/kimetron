@@ -2,7 +2,9 @@ export type {
   Doc,
   Edge,
   EdgeEndpoint,
+  EdgeMarker,
   EdgeRoute,
+  EdgeStyle,
   GridConfig,
   Origin,
   Port,
@@ -12,6 +14,7 @@ export type {
   Viewport,
   WorldConfig,
   WorldObject,
+  WorldObjectStyle,
 } from './types'
 export { unitToPx, formatLength, formatScale, PX_PER_INCH, MM_PER_INCH } from './units'
 export {

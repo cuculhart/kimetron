@@ -1,4 +1,4 @@
-import type { Edge, EdgeRoute, Engine, Origin, Port, Pt, ResizeDir } from '@kimetron/core'
+import type { Edge, EdgeMarker, EdgeRoute, Engine, Origin, Port, Pt, ResizeDir } from '@kimetron/core'
 import { edgeEndpoints, edgeGeom, unitToPx } from '@kimetron/core'
 
 export interface Frame {
@@ -115,6 +115,34 @@ export function portPoints(
   })
 }
 
+const SMOOTH_RADIUS_PX = 8
+const EDGE_LINE = 'var(--ki-edge-line, #7d8fa3)'
+const SEL_COLOR = 'var(--ki-sel, #3a7bd5)'
+
+/** Polyline path with quadratic-rounded corners (screen px). */
+function roundedPathD(pts: Pt[], r: number): string {
+  if (pts.length < 3) {
+    return pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
+  }
+  let d = `M ${pts[0].x} ${pts[0].y}`
+  for (let i = 1; i < pts.length - 1; i++) {
+    const a = pts[i - 1]
+    const b = pts[i]
+    const c = pts[i + 1]
+    const l1 = Math.hypot(b.x - a.x, b.y - a.y)
+    const l2 = Math.hypot(c.x - b.x, c.y - b.y)
+    if (l1 === 0 || l2 === 0) {
+      d += ` L ${b.x} ${b.y}`
+      continue
+    }
+    const rr = Math.min(r, l1 / 2, l2 / 2)
+    const p1 = { x: b.x + ((a.x - b.x) / l1) * rr, y: b.y + ((a.y - b.y) / l1) * rr }
+    const p2 = { x: b.x + ((c.x - b.x) / l2) * rr, y: b.y + ((c.y - b.y) / l2) * rr }
+    d += ` L ${p1.x} ${p1.y} Q ${b.x} ${b.y} ${p2.x} ${p2.y}`
+  }
+  return d + ` L ${pts[pts.length - 1].x} ${pts[pts.length - 1].y}`
+}
+
 /** SVG path `d` for a resolved world-space route. */
 export function routePathD(
   engine: Engine,
@@ -128,6 +156,7 @@ export function routePathD(
     return `M ${p0.x} ${p0.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${p3.x} ${p3.y}`
   }
   const pts = g.pts.map((p) => engine.worldToScreen(p))
+  if (route === 'smoothstep') return roundedPathD(pts, SMOOTH_RADIUS_PX)
   return pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
 }
 
@@ -136,6 +165,49 @@ export function edgePathD(engine: Engine, e: Edge): string | null {
   const ends = edgeEndpoints(engine.doc, e)
   if (!ends) return null
   return routePathD(engine, ends.from, ends.to, e.route)
+}
+
+/** Marker element id for an edge endpoint. */
+export function markerId(e: Edge, end: 'start' | 'end'): string {
+  return `ki-m-${e.id}-${end}`
+}
+
+/** Presentation attributes for rendering an edge path (`<path>` attrs). */
+export interface EdgeAttrs {
+  d: string
+  stroke?: string
+  strokeWidth?: number
+  strokeDasharray?: string
+  markerStart?: string
+  markerEnd?: string
+}
+
+export function edgeAttrs(engine: Engine, e: Edge): EdgeAttrs | null {
+  const d = edgePathD(engine, e)
+  if (!d) return null
+  return {
+    d,
+    stroke: e.style?.color,
+    strokeWidth: e.style?.width,
+    strokeDasharray: e.style?.dash?.join(' '),
+    markerStart: e.markerStart ? `url(#${markerId(e, 'start')})` : undefined,
+    markerEnd: e.markerEnd ? `url(#${markerId(e, 'end')})` : undefined,
+  }
+}
+
+/** A `<marker>` def needed by an edge: id, glyph kind, resolved color. */
+export interface EdgeMarkerDef {
+  id: string
+  kind: EdgeMarker
+  color: string
+}
+
+export function edgeMarkerDefs(engine: Engine, e: Edge): EdgeMarkerDef[] {
+  const color = engine.selectedIds.has(e.id) ? SEL_COLOR : (e.style?.color ?? EDGE_LINE)
+  const defs: EdgeMarkerDef[] = []
+  if (e.markerStart) defs.push({ id: markerId(e, 'start'), kind: e.markerStart, color })
+  if (e.markerEnd) defs.push({ id: markerId(e, 'end'), kind: e.markerEnd, color })
+  return defs
 }
 
 let injected = false
@@ -160,6 +232,7 @@ export function injectStyles(): void {
 .ki-edge { fill: none; stroke: var(--ki-edge-line, #7d8fa3); stroke-width: 1.5; }
 .ki-edge.ki-sel { stroke: var(--ki-sel, #3a7bd5); stroke-width: 2.5; }
 .ki-edge-preview { fill: none; stroke: var(--ki-sel, #3a7bd5); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.ki-edge-preview.ki-invalid { stroke: var(--ki-danger, #d33); }
 .ki-obj { z-index: 1; }
 .ki-ports { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
 .ki-port { position: absolute; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: #fff; border: 1.5px solid var(--ki-edge-line, #7d8fa3); box-sizing: border-box; cursor: crosshair; pointer-events: auto; }

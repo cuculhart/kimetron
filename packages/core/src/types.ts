@@ -32,6 +32,13 @@ export interface Port {
   fy: number
 }
 
+export interface WorldObjectStyle {
+  /** CSS color string, e.g. '#fef3c7' or 'var(--fill)'. */
+  fill?: string
+  /** Border (stroke) color. */
+  stroke?: string
+}
+
 export interface WorldObject {
   id: string
   kind: string
@@ -40,10 +47,22 @@ export interface WorldObject {
   w: number
   h: number
   ports?: Port[]
+  style?: WorldObjectStyle
   data?: unknown
 }
 
-export type EdgeRoute = 'straight' | 'orthogonal' | 'bezier'
+export type EdgeRoute = 'straight' | 'orthogonal' | 'smoothstep' | 'bezier'
+
+export interface EdgeStyle {
+  /** CSS color string, e.g. '#b45309' or 'var(--dep)'. */
+  color?: string
+  /** Stroke width in screen px — a semantic attribute, not world size. */
+  width?: number
+  /** stroke-dasharray pattern, e.g. [4, 4] for dashed. */
+  dash?: number[]
+}
+
+export type EdgeMarker = 'arrow' | 'dot'
 
 export interface EdgeEndpoint {
   obj: string
@@ -56,6 +75,9 @@ export interface Edge {
   from: EdgeEndpoint
   to: EdgeEndpoint
   route?: EdgeRoute
+  style?: EdgeStyle
+  markerStart?: EdgeMarker
+  markerEnd?: EdgeMarker
   label?: string
 }
 

@@ -21,9 +21,13 @@ export type Orientation = 'h' | 'v'
 
 const NODE_W = 70
 const NODE_H = 15
-const ALONG_GAP = 10 // between siblings
-const ACROSS_GAP = 15 // between depth levels
 const MARGIN = 10
+// slot steps along the sibling axis; even multiples of 5mm so that
+// half-slot parent centers still land on the grid
+const ALONG_STEP_H = NODE_H + 15 // = 30
+const ALONG_STEP_V = NODE_W + 10 // = 80
+const ACROSS_GAP = 15 // between depth levels
+const TREE_GAP_SLOTS = 1 // extra slots between root trees
 
 /** Port ids per side, in world-space fractions (origin: top-left → fy 0 = top). */
 // plesfeda's edge semantics: quiet gray tree links, brown bezier deps
@@ -63,12 +67,23 @@ export function layoutTasks(
   const taskById = new Map(tasks.map((t) => [t.id, t]))
   const objects: WorldObject[] = []
   const byId = new Map<string, WorldObject>()
-  let row = 0
+  const alongStep = orientation === 'h' ? ALONG_STEP_H : ALONG_STEP_V
+  const acrossStep = orientation === 'h' ? NODE_W + ACROSS_GAP : NODE_H + ACROSS_GAP
+  const centers = new Map<string, number>()
+  let slot = 0
 
-  const walk = (t: Task, wbs: string, depth: number) => {
-    // along = sibling axis, across = depth axis
-    const along = MARGIN + row++ * (orientation === 'h' ? NODE_H + ALONG_GAP : NODE_W + ALONG_GAP)
-    const across = MARGIN + depth * (orientation === 'h' ? NODE_W + ACROSS_GAP : NODE_H + ACROSS_GAP)
+  // tidy tree: leaves take consecutive slots, a parent is centered
+  // between its outermost children — that is what reads as a bracket
+  const place = (t: Task, wbs: string, depth: number) => {
+    const kids = children(t.id)
+    kids.forEach((k, i) => place(k, `${wbs}.${i + 1}`, depth + 1))
+    const center =
+      kids.length === 0
+        ? slot++
+        : (centers.get(kids[0].id)! + centers.get(kids[kids.length - 1].id)!) / 2
+    centers.set(t.id, center)
+    const along = MARGIN + center * alongStep
+    const across = MARGIN + depth * acrossStep
     const o: WorldObject = {
       id: t.id,
       kind: 'task',
@@ -82,10 +97,14 @@ export function layoutTasks(
     }
     objects.push(o)
     byId.set(t.id, o)
-    children(t.id).forEach((k, i) => walk(k, `${wbs}.${i + 1}`, depth + 1))
   }
 
-  tasks.filter((t) => t.parent === null).forEach((t, i) => walk(t, `${i + 1}`, 0))
+  tasks
+    .filter((t) => t.parent === null)
+    .forEach((t, i) => {
+      if (i > 0) slot += TREE_GAP_SLOTS
+      place(t, `${i + 1}`, 0)
+    })
 
   const edges: Edge[] = []
   // hierarchy: parent → child across the depth axis, quiet smoothstep links

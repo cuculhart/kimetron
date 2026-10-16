@@ -83,7 +83,7 @@ export function sampleObjects(): WorldObject[] {
     // pond — non-solid area rendered with an SVG pattern (driver-side)
     { id: 'pond', kind: 'pond', x: 2700, y: 900, w: 900, h: 500, layer: -5 },
     unit('uA', 600, 600, 'A', '#3a7bd5'),
-    unit('uB', 3500, 2400, 'B', '#d97706'),
+    unit('uB', 3300, 2620, 'B', '#d97706'),
   ]
 }
 
@@ -118,26 +118,37 @@ function targetFor(c: Pt, wp: Pt | undefined): Pt {
 
 const STEP = 60 // mm per tick — thinner than the 120 mm walls, no tunneling
 const ARRIVE = 150
+const STUCK_TICKS = 12
+const MIN_MOVE = 20 // mm per tick — below this the unit counts as stuck
+
+export interface WanderState {
+  wp?: Pt
+  still: number
+}
 
 /** One wander tick: every unit steps toward its waypoint via tryMove,
-    sliding along blocked axes; repick on arrival or a dead stop. */
-export function stepUnits(engine: Engine, wps: Record<string, Pt>): void {
+    sliding along blocked axes. Stuck is judged on ACTUAL displacement —
+    a unit creeping at <20mm/tick in a local minimum (e.g. pressed within
+    one STEP of a wall face) gets a fresh waypoint after STUCK_TICKS. */
+export function stepUnits(engine: Engine, st: Record<string, WanderState>): void {
   for (const id of UNIT_IDS) {
     const o = engine.doc.objects.find((o) => o.id === id)
     if (!o) continue
+    const s = (st[id] ??= { still: 0 })
     const c = { x: o.x + o.w / 2, y: o.y + o.h / 2 }
-    const wp = (wps[id] = targetFor(c, wps[id]))
+    const wp = (s.wp = targetFor(c, s.wp))
     const dx = wp.x - c.x
     const dy = wp.y - c.y
     const d = Math.hypot(dx, dy) || 1
     const mx = (dx / d) * STEP
     const my = (dy / d) * STEP
-    if (
-      !engine.tryMove(id, mx, my) &&
-      !engine.tryMove(id, mx, 0) &&
-      !engine.tryMove(id, 0, my)
-    ) {
-      wps[id] = pickWaypoint()
+    engine.tryMove(id, mx, my) || engine.tryMove(id, mx, 0) || engine.tryMove(id, 0, my)
+    const moved = engine.doc.objects.find((o) => o.id === id)
+    const dist = moved ? Math.hypot(moved.x - o.x, moved.y - o.y) : 0
+    s.still = dist < MIN_MOVE ? s.still + 1 : 0
+    if (s.still >= STUCK_TICKS) {
+      s.wp = pickWaypoint()
+      s.still = 0
     }
   }
 }

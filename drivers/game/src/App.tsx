@@ -9,17 +9,16 @@ import {
   UNIT_RANGE,
   adjacent,
   canOverlap,
-  pickWaypoint,
   sampleObjects,
   stepUnits,
 } from './model'
-import type { UnitData } from './model'
+import type { UnitData, WanderState } from './model'
 
 export function App() {
   const engine = useEngine({ units: 'mm', origin: 'top-left', grid: GRID_CFG })
   useEngineVersion(engine)
   const [paused, setPaused] = useState(false)
-  const wps = useRef<Record<string, Pt>>({})
+  const wps = useRef<Record<string, WanderState>>({})
 
   useEffect(() => {
     engine.collisionMode = 'reject'
@@ -134,7 +133,7 @@ export function App() {
             )
           })}
           {UNIT_IDS.map((id) => {
-            const wp = wps.current[id]
+            const wp = wps.current[id]?.wp
             if (!wp) return null
             const s = engine.worldToScreen(wp)
             return (

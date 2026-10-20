@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-20
+
+### Added
+
+- `@kimetron/core`: `PointerOpts.noDrag` — pointer-down on `.nodrag`
+  content / form elements (`input`, `select`, `textarea`,
+  `contenteditable`) inside a custom-rendered object applies selection
+  but never arms a move/marquee gesture, leaving native focus,
+  text-selection and click behavior intact
+- `@kimetron/core`: `Engine.snapObjects` flag — toggles object-edge/
+  center snapping during drag and resize independently of
+  `doc.grid.snap`; set `false` to disable snapping entirely
+- `@kimetron/core`: `Engine.hitFilter` hook — excludes objects from
+  pointer hit-testing (e.g. a strokes-only edit mode, or click-through
+  zones handled by their own chrome)
+- `@kimetron/core`: `Engine.marqueeFilter` hook — excludes objects from
+  marquee selection (e.g. zones selectable only via their own chrome)
+- `@kimetron/core`: `Engine.edgeFilter` hook — excludes edges from
+  `edgeAt` hit-testing, so hidden wires can't be clicked, bent or
+  rewired (e.g. a wires-hidden "final figure" view)
+- `@kimetron/core`: `Engine.hitPriority` hook — when several objects
+  overlap at a click point, the highest rank wins (ties keep render
+  order, topmost first); lets apps deprioritize background linework
+  without removing it from hit-testing entirely
+- `@kimetron/core`: `Engine.patchDoc` / `Engine.commitDoc` — swap the
+  doc without a history commit for gesture-live previews, then fold the
+  edits into one undo step at gesture end (`commitDoc` no-ops when
+  nothing changed)
+- `@kimetron/core`: `Engine.mode` is now public and the `Mode` type is
+  exported, so apps can observe the current gesture state
+- `@kimetron/react`: `.ki-obj` elements now carry `data-ki-obj` (object
+  id, lets input routing find the owning object of `.nodrag` content)
+  and a `ki-kind-{kind}` class (per-kind CSS hooks)
+
+### Fixed
+
+- `@kimetron/dom`: pointer capture is deferred to the first
+  pointermove. Capturing on pointerdown retargeted pointerup to the
+  canvas and `preventDefault` suppressed compatibility mouse events,
+  so click/dblclick inside objects (tool buttons, inline editors,
+  selects) never fired
+
 ## [1.1.0] - 2026-10-20
 
 ### Added

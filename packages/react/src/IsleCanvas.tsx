@@ -152,8 +152,10 @@ export function IsleCanvas({
         return (
           <div
             key={o.id}
+            data-ki-obj={o.id}
             className={
               (isShapeKind(o.kind) ? 'ki-obj ki-shape' : 'ki-obj') +
+              ` ki-kind-${o.kind}` +
               (sel ? ' ki-sel' : '') +
               (engine.dragInvalid && (sel || engine.resize?.id === o.id)
                 ? ' ki-invalid'

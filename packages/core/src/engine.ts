@@ -33,7 +33,7 @@ import { footprintOf, hitObject, shapeSnapPoints } from './shape'
 import type { Doc, Edge, EdgeEndpoint, EdgeRoute, GridConfig, Origin, Pt, Rect, Unit, Viewport, WorldConfig, WorldObject } from './types'
 import { formatScale, unitToPx } from './units'
 
-type Mode =
+export type Mode =
   | 'idle'
   | 'drag'
   | 'marquee'
@@ -48,6 +48,10 @@ export interface PointerOpts {
   additive?: boolean
   /** Alt+drag: drag only the hit object, ignoring its group. */
   detached?: boolean
+  /** Interactive element under the pointer (`.nodrag` content like
+      inputs/buttons inside a custom-rendered object): still applies
+      selection, but never arms a move/marquee gesture. */
+  noDrag?: boolean
 }
 
 /** Which world-space edges a resize handle moves: -1 = min edge, +1 = max edge, 0 = untouched. */
@@ -133,6 +137,25 @@ export class Engine {
   dragInvalid = false
   /** Extra snap candidates injected by the app (page frames, guides). */
   snapExtra: { xs: number[]; ys: number[] } = { xs: [], ys: [] }
+  /** Object-edge/center snapping during drag/resize. Independent of
+      `doc.grid.snap` — set false to disable snapping entirely. */
+  snapObjects = true
+  /** Optional hook — return false to hide an object from pointer
+      hit-testing (click/drag selection). E.g. a strokes-only edit
+      mode, or click-through zones handled by their own chrome. */
+  hitFilter?: (o: WorldObject) => boolean
+  /** Optional hook — return false to exclude an object from marquee
+      selection (e.g. zones selected only via their own chrome). */
+  marqueeFilter?: (o: WorldObject) => boolean
+  /** Optional hook — return false to exclude an edge from pointer
+      hit-testing (e.g. a wires-hidden "final figure" view where
+      invisible wires shouldn't be clickable/bendable). */
+  edgeFilter?: (e: Edge) => boolean
+  /** Optional hook — when several objects overlap at a click point,
+      the one with the highest rank wins (ties keep render order —
+      topmost first). Lets apps deprioritize background linework
+      without removing it from hit-testing entirely. */
+  hitPriority?: (o: WorldObject) => number
   /** In-progress rotate gesture preview: target id and live angle (deg). */
   rotate: { id: string; deg: number } | null = null
   /** Angle snap for the rotate gesture while `pointerMove`'s
@@ -142,7 +165,7 @@ export class Engine {
   cursorWorld: Pt = { x: 0, y: 0 }
   version = 0
 
-  private mode: Mode = 'idle'
+  mode: Mode = 'idle'
   private start: Pt = { x: 0, y: 0 }
   private startWorld: Pt = { x: 0, y: 0 }
   private vpStart: Viewport | null = null
@@ -262,6 +285,21 @@ export class Engine {
         this.selectedIds.delete(id)
       }
     }
+    this.emitDoc()
+  }
+
+  /** Swap the doc without a history commit — gesture-live previews.
+      Follow with `commitDoc` at gesture end to fold the edits into one
+      undo step (the pre-gesture doc becomes the undo point). */
+  patchDoc(doc: Doc): void {
+    this.doc = doc
+    this.emit()
+  }
+
+  /** Commit the current doc as one history entry after silent `patchDoc`
+      updates. No-op when nothing changed. */
+  commitDoc(): void {
+    if (this.lastDoc === this.doc) return
     this.emitDoc()
   }
 
@@ -406,10 +444,20 @@ export class Engine {
     const w = this.screenToWorld(screenPt)
     const tol = HIT_TOL_PX / (unitToPx(this.doc.units) * this.viewport.zoom)
     const objs = renderOrder(this.doc.objects)
+    let best: WorldObject | null = null
+    let bestRank = -Infinity
     for (let i = objs.length - 1; i >= 0; i--) {
-      if (hitObject(objs[i], w, tol)) return objs[i]
+      const o = objs[i]
+      if (this.hitFilter && !this.hitFilter(o)) continue
+      if (!hitObject(o, w, tol)) continue
+      if (!this.hitPriority) return o
+      const r = this.hitPriority(o)
+      if (r > bestRank) {
+        bestRank = r
+        best = o
+      }
     }
-    return null
+    return best
   }
 
   /** All objects whose footprint intersects `rect` — solid or not.
@@ -494,6 +542,7 @@ export class Engine {
     let best: Edge | null = null
     let bd = tol
     for (const e of this.doc.edges) {
+      if (this.edgeFilter && !this.edgeFilter(e)) continue
       const ends = edgeEndpoints(this.doc, e)
       if (!ends) continue
       const d = distToGeom(
@@ -668,7 +717,11 @@ export class Engine {
         return
       }
       if (!this.selectedIds.has(hit.id)) this.setSelection([hit.id])
-      if (hit.locked) return // selectable but not draggable
+      if (hit.locked || opts.noDrag) {
+        // selectable but not draggable (locked, or .nodrag content)
+        this.mode = 'idle'
+        return
+      }
       this.dragIds = opts.detached
         ? [hit.id]
         : this.expandDragIds(this.selectedIds)
@@ -758,7 +811,9 @@ export class Engine {
     if (this.mode === 'drag') {
       const g = this.doc.grid
       const tol = SNAP_TOL_PX / (unitToPx(this.doc.units) * this.viewport.zoom)
-      const { xs, ys } = this.snapTargets(new Set(this.dragIds))
+      const { xs, ys } = this.snapObjects
+        ? this.snapTargets(new Set(this.dragIds))
+        : { xs: [], ys: [] }
       const raw = { x: w.x - this.startWorld.x, y: w.y - this.startWorld.y }
       const ax = this.dragAnchor.x + raw.x
       const ay = this.dragAnchor.y + raw.y
@@ -800,7 +855,11 @@ export class Engine {
       const mq = rectPoly(this.marquee)
       const ids = new Set(
         this.doc.objects
-          .filter((o) => polysIntersect(mq, footprintOf(o)))
+          .filter(
+            (o) =>
+              (!this.marqueeFilter || this.marqueeFilter(o)) &&
+              polysIntersect(mq, footprintOf(o)),
+          )
           .map((o) => o.id),
       )
       const groups = new Set(
@@ -820,7 +879,9 @@ export class Engine {
       const { resizeDir: dir, resizeOrig: orig } = this
       const g = this.doc.grid
       const tol = SNAP_TOL_PX / (unitToPx(this.doc.units) * this.viewport.zoom)
-      const { xs, ys } = this.snapTargets(new Set([this.resizeId]))
+      const { xs, ys } = this.snapObjects
+        ? this.snapTargets(new Set([this.resizeId]))
+        : { xs: [], ys: [] }
       this.guides = []
       let wx = w.x
       let wy = w.y

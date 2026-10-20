@@ -5,6 +5,51 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [1.1.0] - 2026-10-20
+
+### Added
+
+- `@kimetron/core`: `connectOrient(a, b)` hook — imposes direction on a
+  fresh connection regardless of drag direction (e.g. always out→in, so a
+  drag starting on an input port still creates the wire out→in). Returns
+  the ordered {from,to} or null to forbid the pair; the hovered target is
+  flagged `invalid` when it returns null
+- `@kimetron/core`: edge rewiring — `rewireEdge(ep)` hook picks up an
+  existing wire when a gesture starts on an occupied endpoint (the end
+  matching `ep` stays anchored, the other end follows the pointer);
+  `startRewire(pt, edgeId, end)` and grabbing a wire's endpoint just off
+  the object start the same gesture programmatically/from the canvas.
+  Dropping on a port retargets, dropping on empty canvas detaches
+  (undoable); `engine.retargetEdge(id, from, to)` and the `retargetEdge`
+  doc op cover the gesture-less path
+- `drivers/sethera`: bidirectional wiring (`connectOrient`) — drag from a
+  calc input back to a parent `out` port connects out→in; grabbing an
+  occupied input (`rewireEdge` via `rewirePickup`) or a wire's end rewires
+  it, empty-canvas drop detaches
+- `@kimetron/core`: `Edge.bend` — trunk position of 'orthogonal'/
+  'smoothstep' routes as a fraction 0..1 along the dominant axis
+  (default 0.5, serialized). Bend gesture: `startBend(pt, edgeId)`, live
+  `engine.edgeBend` preview, sibling-trunk snapping with guides, and the
+  `bendGroup` hook + `bendEdges` doc op so edges sharing one trunk move
+  in a single commit; `engine.edgeBendT` resolves the effective fraction
+- `@kimetron/dom`/`@kimetron/react`: grabbing the trunk segment of an
+  'orthogonal'/'smoothstep' edge bends it directly (the click still
+  selects); a `.ki-bend` handle at the trunk midpoint of a selected
+  bendable edge (`data-ki-bend` + `data-ki-edge`) offers the same
+  gesture — the trunk slides between parent and child only
+- `drivers/plesfeda`: `bendGroup` groups sibling hier edges, so the
+  shared bracket trunk moves as one when its handle is dragged
+- `@kimetron/core`: `edgeAxis(doc, e)` / `portFacingAxis(o, portId)` —
+  the 'orthogonal'/'smoothstep' dominant axis now resolves from port
+  facing first (an r→l edge keeps a vertical trunk even when the target
+  sits far above/below, so tree brackets no longer collapse into a
+  per-edge staircase); portless endpoints keep the endpoint-delta
+  heuristic. `edgeGeom`/`routePathD` accept an axis override and the
+  bend gesture, trunk hit-test, handle and sibling snapping all follow
+  it
+
 ## [1.0.0] - 2026-10-16
 
 ### Added

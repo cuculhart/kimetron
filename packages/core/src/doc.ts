@@ -1,5 +1,5 @@
 import { objPoint } from './geometry'
-import type { Doc, Edge, Pt, WorldConfig, WorldObject } from './types'
+import type { Doc, Edge, EdgeEndpoint, Pt, WorldConfig, WorldObject } from './types'
 
 export function createDocument(cfg: WorldConfig = {}): Doc {
   return {
@@ -56,6 +56,30 @@ export function removeEdges(doc: Doc, ids: Iterable<string>): Doc {
   return { ...doc, edges: doc.edges.filter((e) => !set.has(e.id)) }
 }
 
+/** Retarget an edge's endpoints (rewire). Presentation fields are kept. */
+export function retargetEdge(
+  doc: Doc,
+  id: string,
+  from: EdgeEndpoint,
+  to: EdgeEndpoint,
+): Doc {
+  return {
+    ...doc,
+    edges: doc.edges.map((e) => (e.id === id ? { ...e, from, to } : e)),
+  }
+}
+
+/** Set the trunk position (fraction 0..1 along the dominant axis) on
+    'orthogonal'/'smoothstep' edges — several ids at once so sibling
+    edges sharing a trunk move together. */
+export function bendEdges(doc: Doc, ids: Iterable<string>, bend: number): Doc {
+  const set = new Set(ids)
+  return {
+    ...doc,
+    edges: doc.edges.map((e) => (set.has(e.id) ? { ...e, bend } : e)),
+  }
+}
+
 /** Resolve an endpoint to a world point, or null if the target is gone.
     Ports are normalized (fx, fy) so they ride the object's rotation. */
 export function endpointPos(doc: Doc, ep: { obj: string; port?: string }): Pt | null {
@@ -73,6 +97,54 @@ export function edgeEndpoints(doc: Doc, e: Edge): { from: Pt; to: Pt } | null {
   const from = endpointPos(doc, e.from)
   const to = endpointPos(doc, e.to)
   return from && to ? { from, to } : null
+}
+
+/** The axis a route bends along — 'h' means the trunk slides on x
+    (vertical trunk, horizontal end segments), 'v' the opposite. */
+export type RouteAxis = 'h' | 'v'
+
+/** The axis a port faces — 'h' for left/right-side ports, 'v' for
+    top/bottom-side ports — derived from the port's offset from the object
+    center, rotated with the object. Null for centered/corner ports or
+    endpoints without a port. */
+export function portFacingAxis(o: WorldObject, portId?: string): RouteAxis | null {
+  if (!portId || !o.ports) return null
+  const p = o.ports.find((p) => p.id === portId)
+  if (!p) return null
+  let dx = p.fx - 0.5
+  let dy = p.fy - 0.5
+  if (o.rot) {
+    const r = (o.rot * Math.PI) / 180
+    const c = Math.cos(r)
+    const s = Math.sin(r)
+    const rx = dx * c - dy * s
+    const ry = dx * s + dy * c
+    dx = rx
+    dy = ry
+  }
+  const ax = Math.abs(dx)
+  const ay = Math.abs(dy)
+  if (ax > ay) return 'h'
+  if (ay > ax) return 'v'
+  return null
+}
+
+/** Dominant axis for an edge's 'orthogonal'/'smoothstep' route. Port
+    facing wins: r→l is always 'h' so tree brackets keep a vertical trunk
+    even when children sit far above/below the parent; a mixed edge uses
+    the exit side; portless endpoints fall back to the endpoint delta. */
+export function edgeAxis(doc: Doc, e: Edge): RouteAxis {
+  const of = doc.objects.find((o) => o.id === e.from.obj)
+  const ot = doc.objects.find((o) => o.id === e.to.obj)
+  const fa = of ? portFacingAxis(of, e.from.port) : null
+  const fb = ot ? portFacingAxis(ot, e.to.port) : null
+  const facing = fa ?? fb
+  if (facing) return facing
+  const ends = edgeEndpoints(doc, e)
+  if (!ends) return 'h'
+  return Math.abs(ends.to.x - ends.from.x) >= Math.abs(ends.to.y - ends.from.y)
+    ? 'h'
+    : 'v'
 }
 
 /** Objects in paint order — `layer` asc, then array order (last = topmost). */
@@ -215,6 +287,9 @@ export function deserializeDoc(json: string): Doc {
             from: { obj: String(e.from.obj), ...(e.from.port ? { port: String(e.from.port) } : {}) },
             to: { obj: String(e.to.obj), ...(e.to.port ? { port: String(e.to.port) } : {}) },
             ...(e.route ? { route: e.route } : {}),
+            ...(typeof e.bend === 'number' && Number.isFinite(e.bend)
+              ? { bend: e.bend }
+              : {}),
             ...(e.style && typeof e.style === 'object'
               ? {
                   style: {

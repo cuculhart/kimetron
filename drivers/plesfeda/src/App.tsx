@@ -25,6 +25,17 @@ export function App() {
     }
     engine.canConnect = (from, to) =>
       !engine.doc.edges.some((e) => e.from.obj === from.obj && e.to.obj === to.obj)
+    // sibling hier edges share one visual trunk — bend them together
+    engine.bendGroup = (edge, doc) =>
+      doc.edges
+        .filter(
+          (s) =>
+            s.id !== edge.id &&
+            (s.route === 'orthogonal' || s.route === 'smoothstep') &&
+            s.from.obj === edge.from.obj &&
+            s.from.port === edge.from.port,
+        )
+        .map((s) => s.id)
   }, [engine])
 
   const relayout = useCallback(() => {
@@ -180,7 +191,7 @@ export function App() {
         <span>tasks {doc.objects.length}</span>
         <span>edges {doc.edges.length}</span>
         <span className="sep" />
-        <span className="hint">WBS & layout derived / hier edges follow depth axis / dep edges pick facing sides / drag snaps to grid</span>
+        <span className="hint">WBS & layout derived / hier edges follow depth axis / dep edges pick facing sides / drag snaps to grid / grab a trunk line (or the ▢ on a selected edge) to slide the bend — siblings follow</span>
       </footer>
     </div>
   )

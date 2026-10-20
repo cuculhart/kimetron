@@ -7,33 +7,43 @@ export type EdgeGeom =
 
 /**
  * Compute the route between two world points.
- * straight: direct line. orthogonal: single bend at the midpoint of the
- * dominant axis. smoothstep: same points as orthogonal (the renderer
- * rounds the corners). bezier: cubic with controls along the dominant axis.
+ * straight: direct line. orthogonal: single bend at `bend` (a fraction
+ * 0..1, default 0.5) along the dominant axis. smoothstep: same points as
+ * orthogonal (the renderer rounds the corners). bezier: cubic with
+ * controls along the dominant axis.
+ * `axis` forces the dominant axis ('h' = trunk slides on x); when omitted
+ * it is inferred from the endpoint delta (callers with port knowledge
+ * should pass `edgeAxis` so port facing wins over the delta).
  */
-export function edgeGeom(from: Pt, to: Pt, route: EdgeRoute = 'straight'): EdgeGeom {
+export function edgeGeom(
+  from: Pt,
+  to: Pt,
+  route: EdgeRoute = 'straight',
+  bend = 0.5,
+  axis?: 'h' | 'v',
+): EdgeGeom {
+  const hDom =
+    axis !== undefined
+      ? axis === 'h'
+      : Math.abs(to.x - from.x) >= Math.abs(to.y - from.y)
   if (route === 'bezier') {
     const dx = to.x - from.x
     const dy = to.y - from.y
-    const c1 =
-      Math.abs(dx) >= Math.abs(dy)
-        ? { x: from.x + dx * 0.5, y: from.y }
-        : { x: from.x, y: from.y + dy * 0.5 }
-    const c2 =
-      Math.abs(dx) >= Math.abs(dy)
-        ? { x: to.x - dx * 0.5, y: to.y }
-        : { x: to.x, y: to.y - dy * 0.5 }
+    const c1 = hDom
+      ? { x: from.x + dx * 0.5, y: from.y }
+      : { x: from.x, y: from.y + dy * 0.5 }
+    const c2 = hDom
+      ? { x: to.x - dx * 0.5, y: to.y }
+      : { x: to.x, y: to.y - dy * 0.5 }
     return { kind: 'bezier', pts: [from, c1, c2, to] }
   }
   if (route === 'orthogonal' || route === 'smoothstep') {
-    const mid =
-      Math.abs(to.x - from.x) >= Math.abs(to.y - from.y)
-        ? { x: (from.x + to.x) / 2, y: from.y }
-        : { x: from.x, y: (from.y + to.y) / 2 }
-    const mid2 =
-      Math.abs(to.x - from.x) >= Math.abs(to.y - from.y)
-        ? { x: (from.x + to.x) / 2, y: to.y }
-        : { x: to.x, y: (from.y + to.y) / 2 }
+    const mid = hDom
+      ? { x: from.x + (to.x - from.x) * bend, y: from.y }
+      : { x: from.x, y: from.y + (to.y - from.y) * bend }
+    const mid2 = hDom
+      ? { x: from.x + (to.x - from.x) * bend, y: to.y }
+      : { x: to.x, y: from.y + (to.y - from.y) * bend }
     return { kind: 'polyline', pts: [from, mid, mid2, to] }
   }
   return { kind: 'polyline', pts: [from, to] }

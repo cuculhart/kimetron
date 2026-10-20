@@ -2,7 +2,7 @@ import { useEffect, useRef, useSyncExternalStore } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { Engine, isShapeKind, renderOrder } from '@kimetron/core'
 import type { Doc, WorldConfig, WorldObject } from '@kimetron/core'
-import { attachInput, DOUBLE_INNER, doubleWidths, edgeAttrs, edgeMarkerDefs, gridBackground, handlePointsFor, hudText, injectStyles, marqueeFrame, objectFrame, pageFrame, portPoints, rotateHandlePoint, routePathD, shapeAttrs, shapeCapMarkerDefs } from '@kimetron/dom'
+import { attachInput, bendHandlePoint, DOUBLE_INNER, doubleWidths, edgeAttrs, edgeMarkerDefs, gridBackground, handlePointsFor, hudText, injectStyles, marqueeFrame, objectFrame, pageFrame, portPoints, rotateHandlePoint, routePathD, shapeAttrs, shapeCapMarkerDefs } from '@kimetron/dom'
 
 export function useEngine(cfg?: WorldConfig): Engine {
   const ref = useRef<Engine | null>(null)
@@ -70,6 +70,7 @@ export function IsleCanvas({
       : undefined
   const handles = selObj ? handlePointsFor(engine, selObj) : []
   const rotHandle = selObj ? rotateHandlePoint(engine, selObj) : null
+  const bendHandle = bendHandlePoint(engine)
 
   return (
     <div
@@ -258,6 +259,17 @@ export function IsleCanvas({
           data-ki-rotate=""
           data-ki-obj={selObj.id}
           style={{ transform: `translate(${rotHandle.x}px, ${rotHandle.y}px)` }}
+        />
+      )}
+      {bendHandle && (
+        <div
+          className="ki-bend"
+          data-ki-bend=""
+          data-ki-edge={bendHandle.id}
+          style={{
+            transform: `translate(${bendHandle.x}px, ${bendHandle.y}px)`,
+            cursor: bendHandle.cursor,
+          }}
         />
       )}
       {marquee && (

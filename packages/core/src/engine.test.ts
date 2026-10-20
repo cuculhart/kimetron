@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   createDocument,
   deserializeDoc,
+  edgeAxis,
+  edgeGeom,
   endpointPos,
   Engine,
   formatLength,
@@ -440,6 +442,378 @@ describe('edges and ports', () => {
     expect(out.edges).toEqual(e.doc.edges)
     const v1 = JSON.stringify({ units: 'mm', origin: 'bottom-left', grid: { size: 10, snap: true }, objects: [] })
     expect(deserializeDoc(v1).edges).toEqual([])
+  })
+})
+
+describe('connect orientation and rewiring', () => {
+  // a mini sethera: sources expose 'out', calcs take 'a'/'b' and re-emit 'out'
+  const objs = [
+    { id: 'p1', kind: 'rect', x: 0, y: 0, w: 40, h: 20, ports: [{ id: 'out', fx: 1, fy: 0.5 }] },
+    { id: 'p2', kind: 'rect', x: 0, y: 60, w: 40, h: 20, ports: [{ id: 'out', fx: 1, fy: 0.5 }] },
+    {
+      id: 'c1', kind: 'rect', x: 100, y: 0, w: 40, h: 30,
+      ports: [
+        { id: 'a', fx: 0, fy: 0.3 },
+        { id: 'b', fx: 0, fy: 0.7 },
+        { id: 'out', fx: 1, fy: 0.5 },
+      ],
+    },
+  ]
+  const isOut = (ep: { obj: string; port?: string }) => ep.port === 'out'
+  const isIn = (ep: { obj: string; port?: string }) => ep.port === 'a' || ep.port === 'b'
+  const make = () => {
+    const e = new Engine(
+      { units: 'mm', origin: 'bottom-left', grid: { size: 10, snap: true } },
+      objs,
+    )
+    e.viewport = { x: 0, y: 500, zoom: 1 }
+    e.canConnect = (from, to) => isOut(from) && isIn(to)
+    e.connectOrient = (a, b) =>
+      isOut(a) && isIn(b)
+        ? { from: a, to: b }
+        : isIn(a) && isOut(b)
+          ? { from: b, to: a }
+          : null
+    e.rewireEdge = (ep) =>
+      isIn(ep)
+        ? (e.doc.edges.find((x) => x.to.obj === ep.obj && x.to.port === ep.port)?.id ?? null)
+        : null
+    return e
+  }
+  const wire = (
+    e: Engine,
+    s: { x: number; y: number },
+    obj: string,
+    port: string,
+    t: { x: number; y: number },
+  ) => {
+    e.startConnect(e.worldToScreen(s), obj, port)
+    e.pointerMove(e.worldToScreen(t))
+    e.pointerUp()
+  }
+  // p1.out = (40,10), p2.out = (40,70), c1.a = (100,9), c1.b = (100,21)
+
+  it('orients a child→parent drag into a from→to edge', () => {
+    const e = make()
+    // grab c1's input 'a' and drag back to p1's 'out'
+    e.startConnect(e.worldToScreen({ x: 100, y: 9 }), 'c1', 'a')
+    e.pointerMove(e.worldToScreen({ x: 40, y: 10 }))
+    expect(e.connect?.hover).toEqual({ obj: 'p1', port: 'out' })
+    expect(e.connect?.invalid).toBe(false)
+    e.pointerUp()
+    expect(e.doc.edges).toHaveLength(1)
+    expect(e.doc.edges[0]).toMatchObject({
+      from: { obj: 'p1', port: 'out' },
+      to: { obj: 'c1', port: 'a' },
+    })
+  })
+
+  it('connectOrient returning null forbids the pair', () => {
+    const e = make()
+    // out → out is not a valid pair
+    e.startConnect(e.worldToScreen({ x: 40, y: 10 }), 'p1', 'out')
+    e.pointerMove(e.worldToScreen({ x: 40, y: 70 })) // p2's 'out'
+    expect(e.connect?.hover).toEqual({ obj: 'p2', port: 'out' })
+    expect(e.connect?.invalid).toBe(true)
+    e.pointerUp()
+    expect(e.doc.edges).toHaveLength(0)
+  })
+
+  it('grabbing an occupied input picks the wire up for rewiring', () => {
+    const e = make()
+    wire(e, { x: 40, y: 10 }, 'p1', 'out', { x: 100, y: 9 })
+    expect(e.doc.edges).toHaveLength(1)
+    // grab the occupied 'a' — the wire's source end follows the pointer
+    e.startConnect(e.worldToScreen({ x: 100, y: 9 }), 'c1', 'a')
+    expect(e.connect?.rewire).toEqual({ edge: 'e1', end: 'from' })
+    e.pointerMove(e.worldToScreen({ x: 40, y: 70 })) // p2 'out'
+    e.pointerUp()
+    expect(e.doc.edges).toHaveLength(1)
+    expect(e.doc.edges[0]).toMatchObject({
+      id: 'e1',
+      from: { obj: 'p2', port: 'out' },
+      to: { obj: 'c1', port: 'a' },
+    })
+  })
+
+  it('dropping a rewired end on empty canvas detaches the wire (undoable)', () => {
+    const e = make()
+    wire(e, { x: 40, y: 10 }, 'p1', 'out', { x: 100, y: 9 })
+    e.startConnect(e.worldToScreen({ x: 100, y: 9 }), 'c1', 'a')
+    e.pointerMove(e.worldToScreen({ x: 200, y: 200 }))
+    e.pointerUp()
+    expect(e.doc.edges).toHaveLength(0)
+    e.undo()
+    expect(e.doc.edges).toHaveLength(1)
+  })
+
+  it('an invalid rewire drop keeps the edge unchanged', () => {
+    const e = make()
+    wire(e, { x: 40, y: 10 }, 'p1', 'out', { x: 100, y: 9 })
+    // pick the wire up at 'a' and drop on c1's own 'b' — same-object port:
+    // treated as a cancel, not a detach
+    e.startConnect(e.worldToScreen({ x: 100, y: 9 }), 'c1', 'a')
+    e.pointerMove(e.worldToScreen({ x: 100, y: 21 }))
+    expect(e.connect?.hover).toBeNull()
+    expect(e.connect?.overPort).toBe(true)
+    e.pointerUp()
+    expect(e.doc.edges).toHaveLength(1)
+    expect(e.doc.edges[0].from).toEqual({ obj: 'p1', port: 'out' })
+  })
+
+  it('startRewire retargets the named end of an edge', () => {
+    const e = make()
+    wire(e, { x: 40, y: 10 }, 'p1', 'out', { x: 100, y: 9 })
+    e.startRewire(e.worldToScreen({ x: 100, y: 9 }), 'e1', 'to')
+    e.pointerMove(e.worldToScreen({ x: 100, y: 21 })) // c1 'b'
+    e.pointerUp()
+    expect(e.doc.edges[0]).toMatchObject({ id: 'e1', to: { obj: 'c1', port: 'b' } })
+  })
+
+  it('grabbing a wire end just off the object rewires that end', () => {
+    const e = make()
+    wire(e, { x: 40, y: 10 }, 'p1', 'out', { x: 100, y: 9 })
+    // click the wire a hair off c1's 'a' endpoint (98,9) — outside the bbox,
+    // on the line, within endpoint tolerance
+    e.pointerDown(e.worldToScreen({ x: 98, y: 9 }))
+    expect(e.connect?.rewire).toEqual({ edge: 'e1', end: 'to' })
+    e.pointerMove(e.worldToScreen({ x: 100, y: 21 }))
+    e.pointerUp()
+    expect(e.doc.edges[0].to).toEqual({ obj: 'c1', port: 'b' })
+  })
+
+  it('a click mid-wire still selects instead of rewiring', () => {
+    const e = make()
+    wire(e, { x: 40, y: 10 }, 'p1', 'out', { x: 100, y: 9 })
+    e.pointerDown(e.worldToScreen({ x: 70, y: 9.5 }))
+    e.pointerUp()
+    expect(e.connect).toBeNull()
+    expect(e.selectedIds.has('e1')).toBe(true)
+  })
+
+  it('retargetEdge rewires an edge programmatically', () => {
+    const e = make()
+    wire(e, { x: 40, y: 10 }, 'p1', 'out', { x: 100, y: 9 })
+    e.retargetEdge('e1', { obj: 'p2', port: 'out' }, { obj: 'c1', port: 'b' })
+    expect(e.doc.edges[0]).toMatchObject({
+      from: { obj: 'p2', port: 'out' },
+      to: { obj: 'c1', port: 'b' },
+    })
+  })
+})
+
+describe('edge bend (trunk position)', () => {
+  // a bracket: p feeds c1/c2/c3 through smoothstep edges
+  const OUT = { id: 'out', fx: 1, fy: 0.5 }
+  const IN = { id: 'in', fx: 0, fy: 0.5 }
+  const objs = [
+    { id: 'p', kind: 'rect', x: 0, y: 30, w: 40, h: 20, ports: [OUT] },
+    { id: 'c1', kind: 'rect', x: 100, y: 0, w: 40, h: 20, ports: [IN] },
+    { id: 'c2', kind: 'rect', x: 100, y: 40, w: 40, h: 20, ports: [IN] },
+    { id: 'c3', kind: 'rect', x: 100, y: 80, w: 40, h: 20, ports: [IN] },
+  ]
+  const edges = [1, 2, 3].map((i) => ({
+    id: `e${i}`,
+    from: { obj: 'p', port: 'out' },
+    to: { obj: `c${i}`, port: 'in' },
+    route: 'smoothstep' as const,
+  }))
+  const make = (group = false) => {
+    const e = new Engine(
+      { units: 'mm', origin: 'bottom-left', grid: { size: 10, snap: true } },
+      objs,
+    )
+    e.viewport = { x: 0, y: 500, zoom: 1 }
+    e.doc = { ...e.doc, edges }
+    if (group) {
+      e.bendGroup = (edge, doc) =>
+        doc.edges
+          .filter(
+            (s) =>
+              s.id !== edge.id &&
+              (s.route === 'orthogonal' || s.route === 'smoothstep') &&
+              s.from.obj === edge.from.obj &&
+              s.from.port === edge.from.port,
+          )
+          .map((s) => s.id)
+    }
+    return e
+  }
+  // endpoints: p.out = (40,40); ci.in = (100, yi+10); dx dominant, span = 60
+
+  it('edgeGeom places the trunk at the bend fraction', () => {
+    const g = edgeGeom({ x: 40, y: 40 }, { x: 100, y: 10 }, 'orthogonal', 0.25)
+    expect(g.kind).toBe('polyline')
+    const pts = (g as { pts: { x: number; y: number }[] }).pts
+    expect(pts[1].x).toBeCloseTo(55) // 40 + 60*0.25
+    expect(pts[2].x).toBeCloseTo(55)
+  })
+
+  it('startBend drags the trunk along the dominant axis and commits on up', () => {
+    const e = make()
+    e.startBend(e.worldToScreen({ x: 70, y: 40 }), 'e1')
+    e.pointerMove(e.worldToScreen({ x: 80, y: 45 }))
+    expect(e.edgeBend?.t).toBeCloseTo(2 / 3, 2) // (80-40)/60
+    e.pointerUp()
+    expect(e.doc.edges[0].bend).toBeCloseTo(2 / 3, 2)
+    expect(e.doc.edges[1].bend).toBeUndefined() // others untouched
+    // and it reroutes
+    const g = edgeGeom({ x: 40, y: 40 }, { x: 100, y: 10 }, 'smoothstep', e.doc.edges[0].bend)
+    expect((g as { pts: { x: number }[] }).pts[1].x).toBeCloseTo(80)
+  })
+
+  it('clamps the trunk between the endpoints', () => {
+    const e = make()
+    e.startBend(e.worldToScreen({ x: 70, y: 40 }), 'e1')
+    e.pointerMove(e.worldToScreen({ x: 400, y: 45 }))
+    e.pointerUp()
+    expect(e.doc.edges[0].bend).toBe(1)
+    e.startBend(e.worldToScreen({ x: 70, y: 40 }), 'e1')
+    e.pointerMove(e.worldToScreen({ x: -400, y: 45 }))
+    e.pointerUp()
+    expect(e.doc.edges[0].bend).toBe(0)
+  })
+
+  it('bendGroup moves sibling trunks in the same commit', () => {
+    const e = make(true)
+    e.startBend(e.worldToScreen({ x: 70, y: 40 }), 'e1')
+    expect(e.edgeBend?.ids).toEqual(['e1', 'e2', 'e3'])
+    e.pointerMove(e.worldToScreen({ x: 85, y: 45 }))
+    e.pointerUp()
+    for (const s of e.doc.edges) expect(s.bend).toBeCloseTo(0.75, 2)
+    e.undo()
+    for (const s of e.doc.edges) expect(s.bend).toBeUndefined()
+  })
+
+  it('snaps the trunk to a sibling edge sharing the source', () => {
+    const e = make()
+    e.doc = {
+      ...e.doc,
+      edges: e.doc.edges.map((s) => (s.id === 'e2' ? { ...s, bend: 0.3 } : s)),
+    }
+    // e2's trunk sits at 40 + 60*0.3 = 58 — drag e1 near it
+    e.startBend(e.worldToScreen({ x: 70, y: 40 }), 'e1')
+    e.pointerMove(e.worldToScreen({ x: 60, y: 45 })) // within 8px of trunk 58
+    expect(e.edgeBend?.t).toBeCloseTo(0.3, 2)
+    expect(e.guides.some((g) => g.axis === 'x')).toBe(true)
+    e.pointerUp()
+    expect(e.doc.edges[0].bend).toBeCloseTo(0.3, 2)
+  })
+
+  it('grabbing the trunk segment bends it directly, click still selects', () => {
+    const e = make()
+    // e1's trunk: x=70, y in [10,40] — the top stretch is e1-only
+    e.pointerDown(e.worldToScreen({ x: 70, y: 25 }))
+    expect(e.edgeBend).not.toBeNull()
+    expect(e.selectedIds.has('e1')).toBe(true)
+    e.pointerMove(e.worldToScreen({ x: 80, y: 25 }))
+    e.pointerUp()
+    expect(e.doc.edges[0].bend).toBeCloseTo(2 / 3, 2)
+    // a click without moving: selects, no commit
+    e.pointerDown(e.worldToScreen({ x: 70, y: 25 }))
+    e.pointerUp()
+    expect(e.doc.edges[0].bend).toBeCloseTo(2 / 3, 2)
+  })
+
+  it('a click on a non-trunk segment selects without bending', () => {
+    const e = make()
+    // (55,40) sits on the shared from-segment, ~15mm off the x=70 trunk
+    e.pointerDown(e.worldToScreen({ x: 55, y: 40 }))
+    e.pointerUp()
+    expect(e.edgeBend).toBeNull()
+    expect(e.selectedIds.size).toBe(1)
+    expect(e.doc.edges.every((s) => s.bend === undefined)).toBe(true)
+  })
+
+  it('trunk grab + bendGroup keeps the shared trunk unified', () => {
+    const e = make(true)
+    // grab e1's trunk at x=70 — every sibling should follow
+    e.pointerDown(e.worldToScreen({ x: 70, y: 25 }))
+    expect(e.edgeBend?.ids).toEqual(['e1', 'e2', 'e3'])
+    e.pointerMove(e.worldToScreen({ x: 85, y: 25 }))
+    e.pointerUp()
+    for (const s of e.doc.edges) expect(s.bend).toBeCloseTo(0.75, 2)
+  })
+
+  it('edgeAxis resolves the trunk axis from port facing', () => {
+    const e = new Engine({ units: 'mm', origin: 'top-left', grid: { size: 5 } })
+    e.doc = {
+      ...e.doc,
+      objects: [
+        {
+          id: 'a',
+          kind: 'r',
+          x: 0,
+          y: 0,
+          w: 10,
+          h: 10,
+          ports: [
+            { id: 'r', fx: 1, fy: 0.5 },
+            { id: 'b', fx: 0.5, fy: 1 },
+          ],
+        },
+        {
+          id: 'b',
+          kind: 'r',
+          x: 20,
+          y: 100,
+          w: 10,
+          h: 10,
+          ports: [
+            { id: 'l', fx: 0, fy: 0.5 },
+            { id: 't', fx: 0.5, fy: 0 },
+          ],
+        },
+      ],
+      edges: [
+        { id: 'ss', from: { obj: 'a', port: 'r' }, to: { obj: 'b', port: 'l' }, route: 'orthogonal' },
+        { id: 'vv', from: { obj: 'a', port: 'b' }, to: { obj: 'b', port: 't' }, route: 'orthogonal' },
+        { id: 'mx', from: { obj: 'a', port: 'r' }, to: { obj: 'b', port: 't' }, route: 'orthogonal' },
+        { id: 'nc', from: { obj: 'a' }, to: { obj: 'b' }, route: 'orthogonal' },
+      ],
+    }
+    expect(edgeAxis(e.doc, e.doc.edges[0])).toBe('h') // r→l despite |dy|>|dx|
+    expect(edgeAxis(e.doc, e.doc.edges[1])).toBe('v') // b→t
+    expect(edgeAxis(e.doc, e.doc.edges[2])).toBe('h') // mixed: exit side wins
+    expect(edgeAxis(e.doc, e.doc.edges[3])).toBe('v') // no ports → delta fallback
+  })
+
+  it('far-offset siblings keep a shared vertical trunk and bend together', () => {
+    // regression for the split-bracket bug: children far above/below the
+    // parent flipped to a per-edge staircase because the dominant axis was
+    // inferred from the endpoint delta instead of the port facing
+    const e = make(true)
+    e.doc = {
+      ...e.doc,
+      objects: e.doc.objects.map((o) =>
+        o.id === 'c1' ? { ...o, y: -80 } : o.id === 'c3' ? { ...o, y: 160 } : o,
+      ),
+    }
+    // e1: (40,40)→(100,-70), e3: (40,40)→(100,170) — |dy|>|dx| but still 'h'
+    for (const s of e.doc.edges) expect(edgeAxis(e.doc, s)).toBe('h')
+    // every sibling shares the vertical trunk at x=70 — grabbing e1's
+    // stretch moves all three in one gesture
+    e.pointerDown(e.worldToScreen({ x: 70, y: -20 }))
+    expect(e.edgeBend?.ids).toEqual(['e1', 'e2', 'e3'])
+    e.pointerMove(e.worldToScreen({ x: 85, y: -20 }))
+    e.pointerUp()
+    for (const s of e.doc.edges) expect(s.bend).toBeCloseTo(0.75, 2)
+  })
+
+  it('refuses non-bendable routes and serializes bend', () => {
+    const e = make()
+    e.doc = {
+      ...e.doc,
+      edges: e.doc.edges.map((s) => ({ ...s, route: 'bezier' as const })),
+    }
+    e.startBend(e.worldToScreen({ x: 70, y: 40 }), 'e1')
+    expect(e.edgeBend).toBeNull()
+    e.doc = {
+      ...e.doc,
+      edges: e.doc.edges.map((s) => ({ ...s, route: 'smoothstep' as const, bend: 0.2 })),
+    }
+    const out = deserializeDoc(serializeDoc(e.doc))
+    expect(out.edges[0].bend).toBe(0.2)
   })
 })
 

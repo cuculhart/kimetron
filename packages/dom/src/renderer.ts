@@ -2,6 +2,7 @@ import type { Engine, WorldObject } from '@kimetron/core'
 import { isShapeKind, renderOrder } from '@kimetron/core'
 import { attachInput } from './input'
 import {
+  bendHandlePoint,
   DOUBLE_INNER,
   doubleWidths,
   edgeAttrs,
@@ -109,6 +110,12 @@ export function createRenderer(container: HTMLElement, opts: RendererOptions): R
   rotEl.dataset.kiRotate = ''
   rotEl.hidden = true
   container.appendChild(rotEl)
+
+  const bendEl = document.createElement('div')
+  bendEl.className = 'ki-bend'
+  bendEl.dataset.kiBend = ''
+  bendEl.hidden = true
+  container.appendChild(bendEl)
 
   function render(): void {
     const seen = new Set<string>()
@@ -228,6 +235,16 @@ export function createRenderer(container: HTMLElement, opts: RendererOptions): R
       rotEl.hidden = true
     }
 
+    const bp = bendHandlePoint(engine)
+    if (bp) {
+      bendEl.hidden = false
+      bendEl.dataset.kiEdge = bp.id
+      bendEl.style.transform = `translate(${bp.x}px, ${bp.y}px)`
+      bendEl.style.cursor = bp.cursor
+    } else {
+      bendEl.hidden = true
+    }
+
     const defs = document.createElementNS(SVG_NS, 'defs')
     for (const e of engine.doc.edges) {
       for (const m of edgeMarkerDefs(engine, e)) defs.appendChild(markerEl(m))
@@ -344,6 +361,7 @@ export function createRenderer(container: HTMLElement, opts: RendererOptions): R
       objEls.clear()
       for (const el of handleEls) el.remove()
       rotEl.remove()
+      bendEl.remove()
       pageEl.remove()
       hudEl.remove()
       marqueeEl.remove()

@@ -14,11 +14,16 @@ export function attachInput(el: HTMLElement, engine: Engine): () => void {
     const rot = (e.target as HTMLElement).closest?.(
       '[data-ki-rotate]',
     ) as HTMLElement | null
+    const bend = (e.target as HTMLElement).closest?.(
+      '[data-ki-bend]',
+    ) as HTMLElement | null
     const port = (e.target as HTMLElement).closest?.(
       '[data-ki-port]',
     ) as HTMLElement | null
     if (rot?.dataset.kiObj) {
       engine.startRotate(toLocal(e), rot.dataset.kiObj)
+    } else if (bend?.dataset.kiEdge) {
+      engine.startBend(toLocal(e), bend.dataset.kiEdge)
     } else if (handle?.dataset.kiObj) {
       engine.startResize(
         toLocal(e),

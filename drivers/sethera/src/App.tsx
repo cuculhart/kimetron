@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { formatLength } from '@kimetron/core'
 import type { WorldObject } from '@kimetron/core'
 import { IsleCanvas, useEngine, useEngineVersion } from '@kimetron/react'
-import { canConnect, connectReplace, GRID_CFG, objectValue, OP_LABEL, sampleDoc, WIRE_DEFAULTS } from './model'
+import { canConnect, connectOrient, connectReplace, GRID_CFG, objectValue, OP_LABEL, rewirePickup, sampleDoc, WIRE_DEFAULTS } from './model'
 import type { CalcData, Meta, ZoneData } from './model'
 import '../../demo/src/styles.css'
 
@@ -21,6 +21,8 @@ export function App() {
     engine.connectEdge = WIRE_DEFAULTS
     engine.canConnect = canConnect
     engine.connectReplace = (_from, to) => connectReplace(to, engine.doc.edges)
+    engine.connectOrient = connectOrient
+    engine.rewireEdge = (ep) => rewirePickup(ep, engine.doc.edges)
   }, [engine])
 
   useEffect(() => {
@@ -93,7 +95,7 @@ export function App() {
         <span>objects {doc.objects.length}</span>
         <span>wires {doc.edges.length}</span>
         <span className="sep" />
-        <span className="hint">wire: out-port → calc a/b (occupied input = replace) / Σ aggregates contained pieces / lock & group & page & double-line are engine features</span>
+        <span className="hint">wire: out-port ⇄ calc a/b, either drag direction (occupied input = replace) / drag an occupied input or a wire's end to rewire, drop on empty to detach / Σ aggregates contained pieces / lock & group & page & double-line are engine features</span>
       </footer>
     </div>
   )

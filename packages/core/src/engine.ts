@@ -1,7 +1,9 @@
 import {
   addEdge,
   addObject,
+  bendEdges,
   createDocument,
+  edgeAxis,
   edgeEndpoints,
   endpointPos,
   moveObjects,
@@ -10,10 +12,11 @@ import {
   reorderObjects,
   renderOrder,
   resizeObject,
+  retargetEdge,
   rotateObject,
   type ZOrder,
 } from './doc'
-import { distToGeom, edgeGeom } from './edge'
+import { distToGeom, distToSegment, edgeGeom } from './edge'
 import {
   aabbOf,
   invRotPt,
@@ -30,7 +33,15 @@ import { footprintOf, hitObject, shapeSnapPoints } from './shape'
 import type { Doc, Edge, EdgeEndpoint, EdgeRoute, GridConfig, Origin, Pt, Rect, Unit, Viewport, WorldConfig, WorldObject } from './types'
 import { formatScale, unitToPx } from './units'
 
-type Mode = 'idle' | 'drag' | 'marquee' | 'pan' | 'resize' | 'connect' | 'rotate'
+type Mode =
+  | 'idle'
+  | 'drag'
+  | 'marquee'
+  | 'pan'
+  | 'resize'
+  | 'connect'
+  | 'rotate'
+  | 'bend'
 
 export interface PointerOpts {
   button?: number
@@ -69,8 +80,18 @@ export class Engine {
   resize: { id: string; rect: Rect } | null = null
   guides: Guide[] = []
   /** In-progress connect gesture: source endpoint and hovered target (if any).
-      `invalid` is set when the hovered endpoint fails `canConnect`. */
-  connect: { from: EdgeEndpoint; hover: EdgeEndpoint | null; invalid: boolean } | null = null
+      `invalid` is set when the hovered endpoint fails `canConnect`.
+      `rewire` retargets an existing edge — `end` marks which side follows
+      the pointer; the other side stays anchored. */
+  connect: {
+    from: EdgeEndpoint
+    hover: EdgeEndpoint | null
+    invalid: boolean
+    /** Pointer is over some port even when `hover` is null (same-object
+        ports don't count as empty canvas for a rewire detach). */
+    overPort?: boolean
+    rewire?: { edge: string; end: 'from' | 'to' }
+  } | null = null
   /** Route assigned to edges created by the connect gesture. */
   connectRoute: Edge['route'] = 'straight'
   /** Defaults merged into edges created by the connect gesture
@@ -81,6 +102,26 @@ export class Engine {
   /** Optional hook — edge ids removed when a connection commits, in the
       same commit (e.g. replacing the wire on an occupied calc input). */
   connectReplace?: (from: EdgeEndpoint, to: EdgeEndpoint) => Iterable<string>
+  /** Optional hook — impose direction on a fresh connection. Given the
+      grabbed endpoint `a` and hovered endpoint `b`, return the edge's
+      ordered {from,to} (e.g. always out→in regardless of drag direction),
+      or null to forbid the pair. Default: {from: a, to: b}. */
+  connectOrient?: (
+    a: EdgeEndpoint,
+    b: EdgeEndpoint,
+  ) => { from: EdgeEndpoint; to: EdgeEndpoint } | null
+  /** Optional hook — when a connect gesture starts on `ep`, return the id
+      of an existing edge to rewire instead of creating a new one (e.g.
+      grabbing an occupied input picks up its wire's free end). The end
+      matching `ep` stays anchored; the other end follows the pointer. */
+  rewireEdge?: (ep: EdgeEndpoint) => string | null
+  /** Optional hook — additional edge ids whose trunk follows a bend
+      gesture on `edge` in the same commit (e.g. siblings sharing one
+      visual trunk in a bracket). Default: only the dragged edge. */
+  bendGroup?: (edge: Edge, doc: Doc) => Iterable<string>
+  /** In-progress bend gesture preview: affected edge ids and the live
+      trunk fraction. */
+  edgeBend: { ids: string[]; t: number } | null = null
   /** Collision handling for `solid` objects:
       'none' = physics-free, 'flag' = mark colliding gestures via
       `dragInvalid` but commit anyway, 'reject' = refuse the commit. */
@@ -305,6 +346,14 @@ export class Engine {
     this.emitDoc()
   }
 
+  /** Rewire an edge's endpoints programmatically (the gesture-less
+      counterpart of startRewire). One commit. */
+  retargetEdge(id: string, from: EdgeEndpoint, to: EdgeEndpoint): void {
+    if (!this.doc.edges.some((e) => e.id === id)) return
+    this.doc = retargetEdge(this.doc, id, from, to)
+    this.emitDoc()
+  }
+
   /** Move the selected objects in z-order (array order = render order, last = top). */
   reorderSelected(op: ZOrder): void {
     if (this.selectedIds.size === 0) return
@@ -447,7 +496,10 @@ export class Engine {
     for (const e of this.doc.edges) {
       const ends = edgeEndpoints(this.doc, e)
       if (!ends) continue
-      const d = distToGeom(w, edgeGeom(ends.from, ends.to, e.route))
+      const d = distToGeom(
+        w,
+        edgeGeom(ends.from, ends.to, e.route, this.edgeBendT(e), edgeAxis(this.doc, e)),
+      )
       if (d <= bd) {
         bd = d
         best = e
@@ -456,24 +508,103 @@ export class Engine {
     return best
   }
 
-  /** Begin a connect gesture from a port (or object center if port omitted). */
+  /** Bend fraction used for route computation — the live gesture value
+      while bending, the edge's stored `bend` (default 0.5) otherwise. */
+  edgeBendT(e: Edge): number {
+    return this.edgeBend && this.edgeBend.ids.includes(e.id)
+      ? this.edgeBend.t
+      : (e.bend ?? 0.5)
+  }
+
+  /** Begin a bend gesture — drag the trunk of an 'orthogonal'/'smoothstep'
+      edge along the dominant axis. Extra ids returned by `bendGroup`
+      follow in the same commit. */
+  startBend(pt: Pt, edgeId: string): void {
+    const e = this.doc.edges.find((e) => e.id === edgeId)
+    if (!e || (e.route !== 'orthogonal' && e.route !== 'smoothstep')) return
+    if (!edgeEndpoints(this.doc, e)) return
+    const ids = [
+      ...new Set([
+        edgeId,
+        ...(this.bendGroup ? [...this.bendGroup(e, this.doc)] : []),
+      ]),
+    ]
+    this.mode = 'bend'
+    this.edgeBend = { ids, t: e.bend ?? 0.5 }
+    this.cursorWorld = this.screenToWorld(pt)
+  }
+
+  /** Begin a connect gesture from a port (or object center if port omitted).
+      If `rewireEdge` returns an existing edge for the grabbed endpoint, the
+      gesture rewires that edge instead of creating a new one. */
   startConnect(pt: Pt, obj: string, port?: string): void {
     const o = this.doc.objects.find((o) => o.id === obj)
     if (!o) return
+    const ep: EdgeEndpoint = port ? { obj, port } : { obj }
+    const re = this.rewireEdge?.(ep)
+    const edge = re ? this.doc.edges.find((e) => e.id === re) : undefined
     this.mode = 'connect'
-    this.connect = { from: port ? { obj, port } : { obj }, hover: null, invalid: false }
+    this.connect = edge
+      ? {
+          from: ep,
+          hover: null,
+          invalid: false,
+          rewire: { edge: edge.id, end: sameEndpoint(edge.from, ep) ? 'to' : 'from' },
+        }
+      : { from: ep, hover: null, invalid: false }
     this.cursorWorld = this.screenToWorld(pt)
+  }
+
+  /** Begin a rewire gesture on `edgeId` — the `end` endpoint follows the
+      pointer until dropped on a port (retarget) or on empty canvas
+      (disconnect). */
+  startRewire(pt: Pt, edgeId: string, end: 'from' | 'to'): void {
+    const edge = this.doc.edges.find((e) => e.id === edgeId)
+    if (!edge) return
+    this.mode = 'connect'
+    this.connect = {
+      from: edge[end],
+      hover: null,
+      invalid: false,
+      rewire: { edge: edgeId, end },
+    }
+    this.cursorWorld = this.screenToWorld(pt)
+  }
+
+  /** The fixed end of the in-progress gesture — for a rewire, the side
+      that isn't being dragged. */
+  private connectAnchor(): EdgeEndpoint | null {
+    const c = this.connect
+    if (!c) return null
+    if (!c.rewire) return c.from
+    const e = this.doc.edges.find((e) => e.id === c.rewire!.edge)
+    if (!e) return null
+    return c.rewire.end === 'from' ? e.to : e.from
+  }
+
+  /** Order a fresh pair of endpoints into edge direction (connectOrient
+      hook, or grab→drop when unset). Null = pair forbidden. */
+  private orientedEnds(
+    a: EdgeEndpoint,
+    b: EdgeEndpoint,
+  ): { from: EdgeEndpoint; to: EdgeEndpoint } | null {
+    return this.connectOrient ? this.connectOrient(a, b) : { from: a, to: b }
   }
 
   /** Points for the live connect preview, or null. */
   connectPreview(): { from: Pt; to: Pt } | null {
-    if (!this.connect) return null
-    const from = endpointPos(this.doc, this.connect.from)
-    if (!from) return null
-    const hover = this.connect.hover
-      ? endpointPos(this.doc, this.connect.hover)
-      : null
-    return { from, to: hover ?? this.cursorWorld }
+    const c = this.connect
+    if (!c) return null
+    const loose =
+      (c.hover ? endpointPos(this.doc, c.hover) : null) ?? this.cursorWorld
+    if (c.rewire) {
+      const anchor = this.connectAnchor()
+      const ap = anchor ? endpointPos(this.doc, anchor) : null
+      if (!ap) return null
+      return c.rewire.end === 'from' ? { from: loose, to: ap } : { from: ap, to: loose }
+    }
+    const from = endpointPos(this.doc, c.from)
+    return from ? { from, to: loose } : null
   }
 
   private nextEdgeId(): string {
@@ -549,6 +680,41 @@ export class Engine {
 
     const edge = this.edgeAt(pt)
     if (edge) {
+      // grabbing just off an endpoint picks that end up for rewiring
+      // (the segment outside the object — ports themselves connect)
+      const ends = edgeEndpoints(this.doc, edge)
+      if (ends) {
+        const tol = PORT_TOL_PX / (unitToPx(this.doc.units) * this.viewport.zoom)
+        const df = Math.hypot(ends.from.x - this.startWorld.x, ends.from.y - this.startWorld.y)
+        const dt = Math.hypot(ends.to.x - this.startWorld.x, ends.to.y - this.startWorld.y)
+        if (Math.min(df, dt) <= tol) {
+          this.startRewire(pt, edge.id, df <= dt ? 'from' : 'to')
+          this.emit()
+          return
+        }
+        // grabbing the trunk segment bends it; the click still selects
+        if (edge.route === 'orthogonal' || edge.route === 'smoothstep') {
+          const g = edgeGeom(
+            ends.from,
+            ends.to,
+            edge.route,
+            this.edgeBendT(edge),
+            edgeAxis(this.doc, edge),
+          )
+          if (
+            !opts.additive &&
+            g.kind === 'polyline' &&
+            g.pts.length === 4 &&
+            distToSegment(this.startWorld, g.pts[1], g.pts[2]) <=
+              EDGE_TOL_PX / (unitToPx(this.doc.units) * this.viewport.zoom)
+          ) {
+            if (!this.selectedIds.has(edge.id)) this.setSelection([edge.id])
+            this.startBend(pt, edge.id)
+            this.emit()
+            return
+          }
+        }
+      }
       if (opts.additive) {
         if (this.selectedIds.has(edge.id)) this.selectedIds.delete(edge.id)
         else this.selectedIds.add(edge.id)
@@ -706,12 +872,61 @@ export class Engine {
     }
 
     if (this.mode === 'connect' && this.connect) {
+      const c = this.connect
+      const anchor = this.connectAnchor() ?? c.from
       const hover = this.portAt(pt)
-      const h = hover && hover.obj !== this.connect.from.obj ? hover : null
-      this.connect = {
-        ...this.connect,
-        hover: h,
-        invalid: h !== null && !!this.canConnect && !this.canConnect(this.connect.from, h),
+      const h = hover && hover.obj !== anchor.obj ? hover : null
+      let invalid = false
+      if (h) {
+        const pair = c.rewire
+          ? c.rewire.end === 'from'
+            ? { from: h, to: anchor }
+            : { from: anchor, to: h }
+          : this.orientedEnds(c.from, h)
+        invalid =
+          pair === null ||
+          (!!this.canConnect && !this.canConnect(pair.from, pair.to))
+      }
+      this.connect = { ...c, hover: h, invalid, overPort: hover !== null }
+      this.emit()
+      return
+    }
+
+    if (this.mode === 'bend' && this.edgeBend) {
+      const e = this.doc.edges.find((x) => x.id === this.edgeBend!.ids[0])
+      const ends = e ? edgeEndpoints(this.doc, e) : null
+      if (e && ends) {
+        const hDom = edgeAxis(this.doc, e) === 'h'
+        const base = hDom ? ends.from.x : ends.from.y
+        const span = hDom ? ends.to.x - ends.from.x : ends.to.y - ends.from.y
+        const cur = hDom ? w.x : w.y
+        let t = span !== 0 ? (cur - base) / span : 0.5
+        // snap to a sibling trunk: a bendable edge sharing the same source
+        this.guides = []
+        const tol = SNAP_TOL_PX / (unitToPx(this.doc.units) * this.viewport.zoom)
+        const ids = new Set(this.edgeBend.ids)
+        for (const s of this.doc.edges) {
+          if (
+            ids.has(s.id) ||
+            (s.route !== 'orthogonal' && s.route !== 'smoothstep') ||
+            s.from.obj !== e.from.obj ||
+            s.from.port !== e.from.port
+          ) {
+            continue
+          }
+          const se = edgeEndpoints(this.doc, s)
+          if (!se) continue
+          const sHDom = edgeAxis(this.doc, s) === 'h'
+          const sSpan = hDom ? se.to.x - se.from.x : se.to.y - se.from.y
+          if (sHDom !== hDom || sSpan === 0) continue
+          const trunk = (hDom ? se.from.x : se.from.y) + sSpan * (s.bend ?? 0.5)
+          if (Math.abs(trunk - cur) <= tol) {
+            t = (trunk - base) / span
+            this.guides.push({ axis: hDom ? 'x' : 'y', at: trunk })
+            break
+          }
+        }
+        this.edgeBend = { ...this.edgeBend, t: Math.min(1, Math.max(0, t)) }
       }
       this.emit()
       return
@@ -754,21 +969,63 @@ export class Engine {
         this.emitDoc()
       }
     }
-    if (this.mode === 'connect' && this.connect?.hover && !this.connect.invalid) {
-      const edge: Edge = {
-        ...this.connectEdge,
-        id: this.nextEdgeId(),
-        from: this.connect.from,
-        to: this.connect.hover,
-        route: this.connectEdge?.route ?? this.connectRoute,
+    if (this.mode === 'connect' && this.connect) {
+      const c = this.connect
+      const re = c.rewire
+        ? this.doc.edges.find((e) => e.id === c.rewire!.edge)
+        : undefined
+      if (c.rewire && re) {
+        if (c.hover && !c.invalid) {
+          const anchor = this.connectAnchor()!
+          const target =
+            c.rewire.end === 'from'
+              ? { from: c.hover, to: anchor }
+              : { from: anchor, to: c.hover }
+          if (!sameEndpoint(target.from, re.from) || !sameEndpoint(target.to, re.to)) {
+            const drop = [
+              ...(this.connectReplace?.(target.from, target.to) ?? []),
+            ].filter((id) => id !== re.id)
+            let doc = drop.length > 0 ? removeEdges(this.doc, drop) : this.doc
+            doc = retargetEdge(doc, re.id, target.from, target.to)
+            this.doc = doc
+            this.emitDoc()
+          }
+        } else if (!c.hover && !c.overPort) {
+          // dropped on empty canvas — detach the wire
+          this.doc = removeEdges(this.doc, [re.id])
+          this.emitDoc()
+        }
+        // invalid hover → gesture cancels, the edge is left unchanged
+      } else if (!c.rewire && c.hover && !c.invalid) {
+        const pair = this.orientedEnds(c.from, c.hover)
+        if (pair) {
+          const edge: Edge = {
+            ...this.connectEdge,
+            id: this.nextEdgeId(),
+            from: pair.from,
+            to: pair.to,
+            route: this.connectEdge?.route ?? this.connectRoute,
+          }
+          const drop = this.connectReplace
+            ? [...this.connectReplace(pair.from, pair.to)]
+            : []
+          let doc = drop.length > 0 ? removeEdges(this.doc, drop) : this.doc
+          doc = addEdge(doc, edge)
+          this.doc = doc
+          this.emitDoc()
+        }
       }
-      const drop = this.connectReplace
-        ? [...this.connectReplace(this.connect.from, this.connect.hover)]
-        : []
-      let doc = drop.length > 0 ? removeEdges(this.doc, drop) : this.doc
-      doc = addEdge(doc, edge)
-      this.doc = doc
-      this.emitDoc()
+    }
+    if (this.mode === 'bend' && this.edgeBend) {
+      const b = this.edgeBend
+      const set = new Set(b.ids)
+      const changed = this.doc.edges.some(
+        (e) => set.has(e.id) && (e.bend ?? 0.5) !== b.t,
+      )
+      if (changed) {
+        this.doc = bendEdges(this.doc, b.ids, b.t)
+        this.emitDoc()
+      }
     }
     this.mode = 'idle'
     this.dragDelta = null
@@ -776,6 +1033,7 @@ export class Engine {
     this.dragInvalid = false
     this.guides = []
     this.connect = null
+    this.edgeBend = null
     this.resize = null
     this.resizeId = null
     this.resizeOrig = null
@@ -858,6 +1116,10 @@ export class Engine {
     }
     this.emit()
   }
+}
+
+function sameEndpoint(a: EdgeEndpoint, b: EdgeEndpoint): boolean {
+  return a.obj === b.obj && a.port === b.port
 }
 
 /** Nearest candidate to `v` within `tol`, or null. */

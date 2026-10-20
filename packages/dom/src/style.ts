@@ -1,5 +1,5 @@
 import type { Edge, EdgeMarker, EdgeRoute, Engine, Origin, Port, Pt, ResizeDir, WorldObject } from '@kimetron/core'
-import { arcAngles, arcPoint, edgeEndpoints, edgeGeom, formatLength, objPoint, shapeAnchors, unitToPx } from '@kimetron/core'
+import { arcAngles, arcPoint, edgeAxis, edgeEndpoints, edgeGeom, formatLength, objPoint, shapeAnchors, unitToPx, type RouteAxis } from '@kimetron/core'
 
 export interface Frame {
   left: number
@@ -245,8 +245,10 @@ export function routePathD(
   from: Pt,
   to: Pt,
   route: EdgeRoute = 'straight',
+  bend = 0.5,
+  axis?: RouteAxis,
 ): string {
-  const g = edgeGeom(from, to, route)
+  const g = edgeGeom(from, to, route, bend, axis)
   if (g.kind === 'bezier') {
     const [p0, c1, c2, p3] = g.pts.map((p) => engine.worldToScreen(p))
     return `M ${p0.x} ${p0.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${p3.x} ${p3.y}`
@@ -260,7 +262,14 @@ export function routePathD(
 export function edgePathD(engine: Engine, e: Edge): string | null {
   const ends = edgeEndpoints(engine.doc, e)
   if (!ends) return null
-  return routePathD(engine, ends.from, ends.to, e.route)
+  return routePathD(
+    engine,
+    ends.from,
+    ends.to,
+    e.route,
+    engine.edgeBendT(e),
+    edgeAxis(engine.doc, e),
+  )
 }
 
 /** Marker element id for an edge endpoint. */
@@ -291,6 +300,34 @@ export function edgeAttrs(engine: Engine, e: Edge): EdgeAttrs | null {
     markerEnd: e.markerEnd ? `url(#${markerId(e, 'end')})` : undefined,
     double: e.style?.double,
   }
+}
+
+/** Screen-px position of the bend handle on the selected edge — the
+    midpoint of its trunk segment, shown when exactly one
+    'orthogonal'/'smoothstep' edge is selected. `cursor` follows the
+    dominant axis. */
+export function bendHandlePoint(
+  engine: Engine,
+): { id: string; x: number; y: number; cursor: string } | null {
+  if (engine.selectedIds.size !== 1) return null
+  const id = [...engine.selectedIds][0]
+  const e = engine.doc.edges.find((e) => e.id === id)
+  if (!e || (e.route !== 'orthogonal' && e.route !== 'smoothstep')) return null
+  const ends = edgeEndpoints(engine.doc, e)
+  if (!ends) return null
+  const hDom = edgeAxis(engine.doc, e) === 'h'
+  const bend = engine.edgeBendT(e)
+  const w = hDom
+    ? {
+        x: ends.from.x + (ends.to.x - ends.from.x) * bend,
+        y: (ends.from.y + ends.to.y) / 2,
+      }
+    : {
+        x: (ends.from.x + ends.to.x) / 2,
+        y: ends.from.y + (ends.to.y - ends.from.y) * bend,
+      }
+  const s = engine.worldToScreen(w)
+  return { id, x: s.x, y: s.y, cursor: hDom ? 'ew-resize' : 'ns-resize' }
 }
 
 /** Inner stroke color of double lines (the paper color). */
@@ -518,6 +555,8 @@ export function injectStyles(): void {
 .ki-handle[hidden] { display: none; }
 .ki-rot { position: absolute; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; background: #fff; border: 1.5px solid var(--ki-sel, #3a7bd5); box-sizing: border-box; z-index: 10; cursor: grab; }
 .ki-rot[hidden] { display: none; }
+.ki-bend { position: absolute; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; background: #fff; border: 1.5px solid var(--ki-sel, #3a7bd5); border-radius: 2px; box-sizing: border-box; z-index: 10; }
+.ki-bend[hidden] { display: none; }
 .ki-guides { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 .ki-guide { position: absolute; background: var(--ki-guide, #e0393e); }
 .ki-guide-v { top: 0; bottom: 0; width: 1px; }

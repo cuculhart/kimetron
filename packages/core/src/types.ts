@@ -124,6 +124,9 @@ export interface Edge {
   from: EdgeEndpoint
   to: EdgeEndpoint
   route?: EdgeRoute
+  /** Trunk position for 'orthogonal'/'smoothstep' routes — a fraction
+      0..1 along the dominant axis from `from` to `to` (default 0.5). */
+  bend?: number
   style?: EdgeStyle
   markerStart?: EdgeMarker
   markerEnd?: EdgeMarker

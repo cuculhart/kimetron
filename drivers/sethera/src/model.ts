@@ -205,6 +205,30 @@ export function connectReplace(to: { obj: string; port?: string }, edges: Edge[]
     .map((e) => e.id)
 }
 
+/** Direction lives in the data, not the gesture — dragging from a calc
+    input back to an `out` port still yields the out→in wire. */
+export function connectOrient(
+  a: { obj: string; port?: string },
+  b: { obj: string; port?: string },
+): { from: { obj: string; port?: string }; to: { obj: string; port?: string } } | null {
+  const isOut = (e: { port?: string }) => e.port === 'out'
+  const isIn = (e: { port?: string }) => e.port === 'a' || e.port === 'b'
+  return isOut(a) && isIn(b)
+    ? { from: a, to: b }
+    : isIn(a) && isOut(b)
+      ? { from: b, to: a }
+      : null
+}
+
+/** Grabbing an occupied calc input picks up its wire's free end (rewire). */
+export function rewirePickup(
+  ep: { obj: string; port?: string },
+  edges: Edge[],
+): string | null {
+  if (ep.port !== 'a' && ep.port !== 'b') return null
+  return edges.find((e) => e.to.obj === ep.obj && e.to.port === ep.port)?.id ?? null
+}
+
 export const WIRE_DEFAULTS = {
   route: 'bezier' as const,
   style: { color: '#b45309', width: 1.8 },

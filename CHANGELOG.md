@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `kimetron-drivers`: pinned workspace dependencies `@kimetron/core`,
+  `@kimetron/dom`, `@kimetron/react` to `1.2.0`. They were left at
+  `1.1.0` after the 1.2.0 release, which no longer matched the
+  workspace versions and made `npm install` / `npm update` resolve
+  them from the registry (404) instead of linking the workspaces.
+
 ## [1.2.0] - 2026-10-20
 
 ### Added

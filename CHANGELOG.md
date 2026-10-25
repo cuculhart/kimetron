@@ -7,8 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-25
+
 ### Fixed
 
+- `@kimetron/core`: spatial index for physical queries —
+  `objectsIn`/`collisions`/`canPlace`/`tryMove`/`objectAt`/`portAt`
+  and the marquee ran a linear `doc.objects` scan with a
+  `footprintOf` + `polysIntersect` per object on every call, so
+  hundreds of objects made each query O(doc) with heavy constant
+  factors (a downstream movement-arbitration layer calls these
+  per-intent per-tick and stalled frames). A lazily-built per-doc
+  index — id map, uniform AABB hash grid with an adaptive cell
+  size and an always-candidates bucket for oversized objects, and
+  cached footprints — now narrows candidates first; the exact
+  tests still decide, and results keep doc-registration order
+  (backlog P46, escalated via sagbal)
 - `kimetron-drivers`: pinned workspace dependencies `@kimetron/core`,
   `@kimetron/dom`, `@kimetron/react` to `1.2.0`. They were left at
   `1.1.0` after the 1.2.0 release, which no longer matched the

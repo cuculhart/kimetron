@@ -10,6 +10,7 @@ export function createDocument(cfg: WorldConfig = {}): Doc {
       size: cfg.grid?.size ?? 10,
       snap: cfg.grid?.snap ?? true,
       ...(typeof cfg.grid?.major === 'number' ? { major: cfg.grid.major } : {}),
+      ...(cfg.grid?.pattern ? { pattern: cfg.grid.pattern } : {}),
     },
     objects: [],
     edges: [],

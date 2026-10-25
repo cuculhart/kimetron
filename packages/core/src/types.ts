@@ -7,6 +7,10 @@ export interface GridConfig {
   /** Major grid interval in cells — every Nth grid line renders bold
       (e.g. size=10, major=10 → a bold line every 100 mm). */
   major?: number
+  /** Canvas background pattern — 'lines' (default) draws linear-gradient
+      grid lines; 'dots' draws a radial-gradient dot per cell corner
+      (React Flow-style). Display only, never affects snapping. */
+  pattern?: 'lines' | 'dots'
 }
 
 export interface WorldConfig {

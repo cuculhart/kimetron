@@ -27,6 +27,25 @@ export function gridBackground(engine: Engine): {
 } {
   const { doc, viewport: vp } = engine
   const s = doc.grid.size * unitToPx(doc.units) * vp.zoom
+  // P47: dots pattern — one dot per cell corner (React Flow-style)
+  if (doc.grid.pattern === 'dots') {
+    const m = doc.grid.major
+    if (m && m > 1) {
+      const ms = s * m
+      return {
+        backgroundImage:
+          `radial-gradient(${GRID_MAJOR_LINE} 1.5px, transparent 1.5px),` +
+          `radial-gradient(${GRID_LINE} 1px, transparent 1px)`,
+        backgroundSize: `${ms}px ${ms}px, ${s}px ${s}px`,
+        backgroundPosition: `${vp.x}px ${vp.y}px`,
+      }
+    }
+    return {
+      backgroundImage: `radial-gradient(${GRID_LINE} 1px, transparent 1px)`,
+      backgroundSize: `${s}px ${s}px`,
+      backgroundPosition: `${vp.x}px ${vp.y}px`,
+    }
+  }
   const minor =
     `linear-gradient(to right, ${GRID_LINE} 1px, transparent 1px),` +
     `linear-gradient(to bottom, ${GRID_LINE} 1px, transparent 1px)`

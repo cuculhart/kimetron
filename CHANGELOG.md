@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `GridConfig.pattern: 'lines' | 'dots'` — `gridBackground` can draw
+  one radial-gradient dot per cell corner (React Flow-style) instead of
+  grid lines; `major` bumps the major dot to 1.5px. Default stays
+  `'lines'`. Display only — snapping is unaffected (backlog P47,
+  from the plesfeda v1 port).
+
 ### Fixed
 
 - `@kimetron/core`, `@kimetron/dom`: bezier edges whose endpoints sit

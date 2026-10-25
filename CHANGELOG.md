@@ -35,10 +35,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Found during the plesfeda v1 port (finish-to-start deps between
   siblings looked angular instead of curved).
 
-## [1.3.1] - 2026-10-25
-
-### Fixed
-
 - `@kimetron/dom`, `@kimetron/react`: per-edge `Edge.style`
   (`color`/`width`/`dash`) never rendered — the `.ki-edge` CSS rule set
   `stroke`/`stroke-width` as *properties*, which beat the `stroke`

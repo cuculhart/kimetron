@@ -5,6 +5,7 @@ import {
   createDocument,
   edgeAxis,
   edgeEndpoints,
+  edgeOutwardDirs,
   endpointPos,
   moveObjects,
   removeEdges,
@@ -635,7 +636,7 @@ export class Engine {
       if (!ends) continue
       const d = distToGeom(
         w,
-        edgeGeom(ends.from, ends.to, e.route, this.edgeBendT(e), edgeAxis(this.doc, e)),
+        edgeGeom(ends.from, ends.to, e.route, this.edgeBendT(e), edgeAxis(this.doc, e), edgeOutwardDirs(this.doc, e) ?? undefined),
       )
       if (d <= bd) {
         bd = d

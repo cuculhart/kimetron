@@ -115,8 +115,10 @@ export {
   edgeEndpoints,
 
   edgeAxis,
+  edgeOutwardDirs,
 
   portFacingAxis,
+  portNormal,
 
   retargetEdge,
 

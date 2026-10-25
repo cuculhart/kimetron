@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `@kimetron/core`, `@kimetron/dom`: bezier edges whose endpoints sit
+  on ports now place their control points along the **port outward
+  normals** (`edgeOutwardDirs`, exported alongside a new `portNormal`)
+  instead of halfway along the endpoint delta. Sibling links that leave
+  and enter on the same side (e.g. `r`→`l` while the target is below)
+  used to kink back inside the card; they now sweep out in the classic
+  S-curve. Portless endpoints keep the delta-based controls. Rendering
+  and hit-testing share the updated geometry.
+  Found during the plesfeda v1 port (finish-to-start deps between
+  siblings looked angular instead of curved).
+
 ## [1.3.1] - 2026-10-25
 
 ### Fixed

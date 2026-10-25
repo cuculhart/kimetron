@@ -1,5 +1,5 @@
 import type { Edge, EdgeMarker, EdgeRoute, Engine, Origin, Port, Pt, ResizeDir, WorldObject } from '@kimetron/core'
-import { arcAngles, arcPoint, edgeAxis, edgeEndpoints, edgeGeom, formatLength, objPoint, shapeAnchors, unitToPx, type RouteAxis } from '@kimetron/core'
+import { arcAngles, arcPoint, edgeAxis, edgeEndpoints, edgeGeom, edgeOutwardDirs, formatLength, objPoint, shapeAnchors, unitToPx, type RouteAxis } from '@kimetron/core'
 
 export interface Frame {
   left: number
@@ -247,8 +247,9 @@ export function routePathD(
   route: EdgeRoute = 'straight',
   bend = 0.5,
   axis?: RouteAxis,
+  outward?: { from: Pt; to: Pt },
 ): string {
-  const g = edgeGeom(from, to, route, bend, axis)
+  const g = edgeGeom(from, to, route, bend, axis, outward)
   if (g.kind === 'bezier') {
     const [p0, c1, c2, p3] = g.pts.map((p) => engine.worldToScreen(p))
     return `M ${p0.x} ${p0.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${p3.x} ${p3.y}`
@@ -269,6 +270,7 @@ export function edgePathD(engine: Engine, e: Edge): string | null {
     e.route,
     engine.edgeBendT(e),
     edgeAxis(engine.doc, e),
+    edgeOutwardDirs(engine.doc, e) ?? undefined,
   )
 }
 

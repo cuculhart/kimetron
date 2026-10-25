@@ -129,6 +129,43 @@ export function portFacingAxis(o: WorldObject, portId?: string): RouteAxis | nul
   return null
 }
 
+/** Outward unit vector of a port — the direction an edge leaves/enters
+    through it: l→(-1,0), r→(+1,0), t→(0,-1), b→(0,+1), rotated with the
+    object. Null for centered/corner ports or endpoints without a port. */
+export function portNormal(o: WorldObject, portId?: string): Pt | null {
+	if (!portId || !o.ports) return null
+	const p = o.ports.find((p) => p.id === portId)
+	if (!p) return null
+	let dx = p.fx - 0.5
+	let dy = p.fy - 0.5
+	if (o.rot) {
+		const r = (o.rot * Math.PI) / 180
+		const c = Math.cos(r)
+		const s = Math.sin(r)
+		const rx = dx * c - dy * s
+		const ry = dx * s + dy * c
+		dx = rx
+		dy = ry
+	}
+	const len = Math.hypot(dx, dy)
+	if (len < 1e-6) return null
+	return { x: dx / len, y: dy / len }
+}
+
+/** Outward normals of both edge endpoints, for direction-aware routes
+    (bezier control points leave/enter along the port normal, not the
+    endpoint delta — sibling links on the same side keep a clean S). */
+export function edgeOutwardDirs(
+	doc: Doc,
+	e: Edge,
+): { from: Pt; to: Pt } | null {
+	const of = doc.objects.find((o) => o.id === e.from.obj)
+	const ot = doc.objects.find((o) => o.id === e.to.obj)
+	const from = of ? portNormal(of, e.from.port) : null
+	const to = ot ? portNormal(ot, e.to.port) : null
+	return from && to ? { from, to } : null
+}
+
 /** Dominant axis for an edge's 'orthogonal'/'smoothstep' route. Port
     facing wins: r→l is always 'h' so tree brackets keep a vertical trunk
     even when children sit far above/below the parent; a mixed edge uses

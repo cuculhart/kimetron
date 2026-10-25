@@ -21,6 +21,10 @@ export function edgeGeom(
   route: EdgeRoute = 'straight',
   bend = 0.5,
   axis?: 'h' | 'v',
+  /** outward unit normals of the from/to ports — bezier controls extend
+      along them (out of the port), giving the classic S-curve even when
+      the target sits "behind" the port (sibling links on the same side) */
+  outward?: { from: Pt; to: Pt },
 ): EdgeGeom {
   const hDom =
     axis !== undefined
@@ -29,6 +33,18 @@ export function edgeGeom(
   if (route === 'bezier') {
     const dx = to.x - from.x
     const dy = to.y - from.y
+    if (outward) {
+      const m = Math.hypot(dx, dy) * 0.25
+      return {
+        kind: 'bezier',
+        pts: [
+          from,
+          { x: from.x + outward.from.x * m, y: from.y + outward.from.y * m },
+          { x: to.x + outward.to.x * m, y: to.y + outward.to.y * m },
+          to,
+        ],
+      }
+    }
     const c1 = hDom
       ? { x: from.x + dx * 0.5, y: from.y }
       : { x: from.x, y: from.y + dy * 0.5 }

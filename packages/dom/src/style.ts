@@ -63,10 +63,9 @@ export function gridBackground(engine: Engine): {
   // P47: dashed / cross — SVG data-URI tiles (needs a literal color)
   if (pat === 'dashed' || pat === 'cross') {
     const sPx = Math.max(1, Math.round(s))
-    const col = encodeURIComponent(doc.grid.color ?? GRID_LINE_LITERAL)
-    const majColLit = encodeURIComponent(
-      doc.grid.color ?? GRID_MAJOR_LITERAL,
-    )
+    // pass colors raw — svgTile URI-encodes the whole SVG once
+    const col = doc.grid.color ?? GRID_LINE_LITERAL
+    const majColLit = doc.grid.color ?? GRID_MAJOR_LITERAL
     const cell = (w: number, stroke: string, dash: boolean) =>
       dash
         ? `<path d='M0 0.5 H${w} M0.5 0 V${w}' stroke='${stroke}' stroke-width='1' stroke-dasharray='4 3'/>`

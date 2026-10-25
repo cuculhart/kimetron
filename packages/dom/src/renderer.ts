@@ -5,6 +5,7 @@ import {
   bendHandlePoint,
   DOUBLE_INNER,
   doubleWidths,
+  EDGE_LINE,
   edgeAttrs,
   edgeMarkerDefs,
   handlePoints,
@@ -259,7 +260,7 @@ export function createRenderer(container: HTMLElement, opts: RendererOptions): R
         const outer = document.createElementNS(SVG_NS, 'path')
         outer.setAttribute('class', cls)
         outer.setAttribute('d', a.d)
-        if (a.stroke) outer.setAttribute('stroke', a.stroke)
+        outer.setAttribute('stroke', a.stroke ?? EDGE_LINE)
         outer.setAttribute('stroke-width', String(w.outer))
         if (a.strokeDasharray) outer.setAttribute('stroke-dasharray', a.strokeDasharray)
         out.push(outer)
@@ -276,8 +277,8 @@ export function createRenderer(container: HTMLElement, opts: RendererOptions): R
       if (a.double) {
         p.setAttribute('stroke', 'none')
       } else {
-        if (a.stroke) p.setAttribute('stroke', a.stroke)
-        if (a.strokeWidth) p.setAttribute('stroke-width', String(a.strokeWidth))
+        p.setAttribute('stroke', a.stroke ?? EDGE_LINE)
+        p.setAttribute('stroke-width', String(a.strokeWidth ?? 1.5))
         if (a.strokeDasharray) p.setAttribute('stroke-dasharray', a.strokeDasharray)
       }
       if (a.markerStart) p.setAttribute('marker-start', a.markerStart)

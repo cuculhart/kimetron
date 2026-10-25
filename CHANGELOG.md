@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `@kimetron/dom`, `@kimetron/react`: per-edge `Edge.style`
+  (`color`/`width`/`dash`) never rendered — the `.ki-edge` CSS rule set
+  `stroke`/`stroke-width` as *properties*, which beat the `stroke`
+  presentation attributes the renderers emitted, so every edge drew in
+  the default gray regardless of its style (markers were unaffected —
+  they already resolve color into an inline style). The defaults moved
+  to attribute fallbacks (`EDGE_LINE`, 1.5) so per-edge styles apply,
+  and `.ki-edge.ki-sel` still overrides for the selected state.
+  Found during the plesfeda v1 port (dep edges should have been brown
+  1.8px but drew as gray 1.5px).
+
 ## [1.3.0] - 2026-10-25
 
 ### Fixed

@@ -1,4 +1,4 @@
-export { gridBackground, objectFrame, marqueeFrame, pageFrame, handlePoints, handlePointsFor, rotateHandlePoint, bendHandlePoint, screenRotDeg, screenDirToWorld, portPoints, edgePathD, edgeAttrs, edgeMarkerDefs, markerId, routePathD, shapePathD, shapeAttrs, shapeCapMarkerDefs, shapeCapMarkerId, hudText, rulerTicks, doubleWidths, DOUBLE_INNER, injectStyles } from './style'
+export { gridBackground, objectFrame, marqueeFrame, pageFrame, handlePoints, handlePointsFor, rotateHandlePoint, bendHandlePoint, screenRotDeg, screenDirToWorld, portPoints, edgePathD, edgeAttrs, edgeMarkerDefs, markerId, routePathD, shapePathD, shapeAttrs, shapeCapMarkerDefs, shapeCapMarkerId, hudText, rulerTicks, doubleWidths, DOUBLE_INNER, EDGE_LINE, injectStyles } from './style'
 export type { EdgeAttrs, EdgeMarkerDef, Frame, HandleDir, HandlePoint, RulerTick, ShapeAttrs } from './style'
 export { attachInput } from './input'
 export { createRenderer } from './renderer'

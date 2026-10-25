@@ -2,7 +2,7 @@ import { useEffect, useRef, useSyncExternalStore } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { Engine, isShapeKind, renderOrder } from '@kimetron/core'
 import type { Doc, WorldConfig, WorldObject } from '@kimetron/core'
-import { attachInput, bendHandlePoint, DOUBLE_INNER, doubleWidths, edgeAttrs, edgeMarkerDefs, gridBackground, handlePointsFor, hudText, injectStyles, marqueeFrame, objectFrame, pageFrame, portPoints, rotateHandlePoint, routePathD, shapeAttrs, shapeCapMarkerDefs } from '@kimetron/dom'
+import { attachInput, bendHandlePoint, DOUBLE_INNER, doubleWidths, EDGE_LINE, edgeAttrs, edgeMarkerDefs, gridBackground, handlePointsFor, hudText, injectStyles, marqueeFrame, objectFrame, pageFrame, portPoints, rotateHandlePoint, routePathD, shapeAttrs, shapeCapMarkerDefs } from '@kimetron/dom'
 
 export function useEngine(cfg?: WorldConfig): Engine {
   const ref = useRef<Engine | null>(null)
@@ -120,15 +120,15 @@ export function IsleCanvas({
             <g key={e.id}>
               {dw && (
                 <>
-                  <path className={cls} d={a.d} stroke={a.stroke} strokeWidth={dw.outer} strokeDasharray={a.strokeDasharray} />
+                  <path className={cls} d={a.d} stroke={a.stroke ?? EDGE_LINE} strokeWidth={dw.outer} strokeDasharray={a.strokeDasharray} />
                   <path className={cls} d={a.d} stroke={DOUBLE_INNER} strokeWidth={dw.inner} />
                 </>
               )}
               <path
                 className={cls}
                 d={a.d}
-                stroke={a.double ? 'none' : a.stroke}
-                strokeWidth={a.double ? undefined : a.strokeWidth}
+                stroke={a.double ? 'none' : (a.stroke ?? EDGE_LINE)}
+                strokeWidth={a.double ? undefined : (a.strokeWidth ?? 1.5)}
                 strokeDasharray={a.double ? undefined : a.strokeDasharray}
                 markerStart={a.markerStart}
                 markerEnd={a.markerEnd}

@@ -212,7 +212,7 @@ export function portPoints(
 }
 
 const SMOOTH_RADIUS_PX = 8
-const EDGE_LINE = 'var(--ki-edge-line, #7d8fa3)'
+export const EDGE_LINE = 'var(--ki-edge-line, #7d8fa3)'
 const SEL_COLOR = 'var(--ki-sel, #3a7bd5)'
 
 /** Polyline path with quadratic-rounded corners (screen px). */
@@ -562,7 +562,7 @@ export function injectStyles(): void {
 .ki-guide-v { top: 0; bottom: 0; width: 1px; }
 .ki-guide-h { left: 0; right: 0; height: 1px; }
 .ki-edges { position: absolute; inset: 0; overflow: visible; pointer-events: none; z-index: 0; }
-.ki-edge { fill: none; stroke: var(--ki-edge-line, #7d8fa3); stroke-width: 1.5; }
+.ki-edge { fill: none; }
 .ki-edge.ki-sel { stroke: var(--ki-sel, #3a7bd5); stroke-width: 2.5; }
 .ki-edge-preview { fill: none; stroke: var(--ki-sel, #3a7bd5); stroke-width: 1.5; stroke-dasharray: 4 3; }
 .ki-edge-preview.ki-invalid { stroke: var(--ki-danger, #d33); }

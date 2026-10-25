@@ -20,6 +20,16 @@ export function screenRotDeg(engine: Engine, deg: number): number {
 const GRID_LINE = 'var(--ki-grid, rgba(40, 60, 80, 0.10))'
 const GRID_MAJOR_LINE = 'var(--ki-grid-major, rgba(40, 60, 80, 0.28))'
 
+const GRID_LINE_LITERAL = 'rgba(40, 60, 80, 0.10)'
+const GRID_MAJOR_LITERAL = 'rgba(40, 60, 80, 0.28)'
+
+/** Data-URI SVG tile — for patterns a plain CSS gradient can't draw
+    (dashed, cross). Needs a literal color, not a var. */
+function svgTile(inner: string, sizePx: number): string {
+	const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='${sizePx}' height='${sizePx}'>${inner}</svg>`
+	return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`
+}
+
 export function gridBackground(engine: Engine): {
   backgroundImage: string
   backgroundSize: string
@@ -27,44 +37,79 @@ export function gridBackground(engine: Engine): {
 } {
   const { doc, viewport: vp } = engine
   const s = doc.grid.size * unitToPx(doc.units) * vp.zoom
-  // P47: dots pattern — one dot per cell corner (React Flow-style)
-  if (doc.grid.pattern === 'dots') {
-    const m = doc.grid.major
+  const m = doc.grid.major
+  const pat = doc.grid.pattern ?? 'lines'
+  const pos = `${vp.x}px ${vp.y}px`
+  const lineCol = doc.grid.color ?? GRID_LINE
+  const majCol = doc.grid.color ?? GRID_MAJOR_LINE
+  // P47: dots — one radial-gradient dot per cell corner
+  if (pat === 'dots') {
     if (m && m > 1) {
       const ms = s * m
       return {
         backgroundImage:
-          `radial-gradient(${GRID_MAJOR_LINE} 1.5px, transparent 1.5px),` +
-          `radial-gradient(${GRID_LINE} 1px, transparent 1px)`,
+          `radial-gradient(${majCol} 1.5px, transparent 1.5px),` +
+          `radial-gradient(${lineCol} 1px, transparent 1px)`,
         backgroundSize: `${ms}px ${ms}px, ${s}px ${s}px`,
-        backgroundPosition: `${vp.x}px ${vp.y}px`,
+        backgroundPosition: pos,
       }
     }
     return {
-      backgroundImage: `radial-gradient(${GRID_LINE} 1px, transparent 1px)`,
+      backgroundImage: `radial-gradient(${lineCol} 1px, transparent 1px)`,
       backgroundSize: `${s}px ${s}px`,
-      backgroundPosition: `${vp.x}px ${vp.y}px`,
+      backgroundPosition: pos,
+    }
+  }
+  // P47: dashed / cross — SVG data-URI tiles (needs a literal color)
+  if (pat === 'dashed' || pat === 'cross') {
+    const sPx = Math.max(1, Math.round(s))
+    const col = encodeURIComponent(doc.grid.color ?? GRID_LINE_LITERAL)
+    const majColLit = encodeURIComponent(
+      doc.grid.color ?? GRID_MAJOR_LITERAL,
+    )
+    const cell = (w: number, stroke: string, dash: boolean) =>
+      dash
+        ? `<path d='M0 0.5 H${w} M0.5 0 V${w}' stroke='${stroke}' stroke-width='1' stroke-dasharray='4 3'/>`
+        : `<path d='M-4 0.5 H4 M0.5 -4 V4' stroke='${stroke}' stroke-width='1'/>`
+    const cellM = (w: number, stroke: string, dash: boolean) =>
+      dash
+        ? `<path d='M0 0.5 H${w} M0.5 0 V${w}' stroke='${stroke}' stroke-width='1.5' stroke-dasharray='4 3'/>`
+        : `<path d='M-5 0.5 H5 M0.5 -5 V5' stroke='${stroke}' stroke-width='1.5'/>`
+    if (m && m > 1) {
+      const ms = sPx * m
+      return {
+        backgroundImage:
+          svgTile(cellM(ms, majColLit, pat === 'dashed'), ms) +
+          ',' +
+          svgTile(cell(sPx, col, pat === 'dashed'), sPx),
+        backgroundSize: `${ms}px ${ms}px, ${sPx}px ${sPx}px`,
+        backgroundPosition: pos,
+      }
+    }
+    return {
+      backgroundImage: svgTile(cell(sPx, col, pat === 'dashed'), sPx),
+      backgroundSize: `${sPx}px ${sPx}px`,
+      backgroundPosition: pos,
     }
   }
   const minor =
-    `linear-gradient(to right, ${GRID_LINE} 1px, transparent 1px),` +
-    `linear-gradient(to bottom, ${GRID_LINE} 1px, transparent 1px)`
-  const m = doc.grid.major
+    `linear-gradient(to right, ${lineCol} 1px, transparent 1px),` +
+    `linear-gradient(to bottom, ${lineCol} 1px, transparent 1px)`
   if (m && m > 1) {
     const ms = s * m
     return {
       backgroundImage:
-        `linear-gradient(to right, ${GRID_MAJOR_LINE} 1px, transparent 1px),` +
-        `linear-gradient(to bottom, ${GRID_MAJOR_LINE} 1px, transparent 1px),` +
+        `linear-gradient(to right, ${majCol} 1px, transparent 1px),` +
+        `linear-gradient(to bottom, ${majCol} 1px, transparent 1px),` +
         minor,
       backgroundSize: `${ms}px ${ms}px, ${ms}px ${ms}px, ${s}px ${s}px, ${s}px ${s}px`,
-      backgroundPosition: `${vp.x}px ${vp.y}px`,
+      backgroundPosition: pos,
     }
   }
   return {
     backgroundImage: minor,
     backgroundSize: `${s}px ${s}px`,
-    backgroundPosition: `${vp.x}px ${vp.y}px`,
+    backgroundPosition: pos,
   }
 }
 

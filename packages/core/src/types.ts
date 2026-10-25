@@ -7,10 +7,15 @@ export interface GridConfig {
   /** Major grid interval in cells — every Nth grid line renders bold
       (e.g. size=10, major=10 → a bold line every 100 mm). */
   major?: number
-  /** Canvas background pattern — 'lines' (default) draws linear-gradient
-      grid lines; 'dots' draws a radial-gradient dot per cell corner
-      (React Flow-style). Display only, never affects snapping. */
-  pattern?: 'lines' | 'dots'
+  /** Canvas background pattern — 'lines' (default), 'dashed',
+      'cross' (small + at cell corners), 'dots' (React Flow-style
+      dots). Display only, never affects snapping. */
+  pattern?: 'lines' | 'dashed' | 'cross' | 'dots'
+  /** Grid color — a literal CSS color used by every pattern.
+      When unset, 'lines'/'dots' resolve --ki-grid / --ki-grid-major
+      and the data-URI patterns ('dashed'/'cross') use the built-in
+      default. Set this when the grid color must live in the doc. */
+  color?: string
 }
 
 export interface WorldConfig {

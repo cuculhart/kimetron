@@ -11,6 +11,7 @@ export function createDocument(cfg: WorldConfig = {}): Doc {
       snap: cfg.grid?.snap ?? true,
       ...(typeof cfg.grid?.major === 'number' ? { major: cfg.grid.major } : {}),
       ...(cfg.grid?.pattern ? { pattern: cfg.grid.pattern } : {}),
+      ...(cfg.grid?.color ? { color: cfg.grid.color } : {}),
     },
     objects: [],
     edges: [],

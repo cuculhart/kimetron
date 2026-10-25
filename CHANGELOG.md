@@ -9,11 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `GridConfig.pattern: 'lines' | 'dots'` — `gridBackground` can draw
-  one radial-gradient dot per cell corner (React Flow-style) instead of
-  grid lines; `major` bumps the major dot to 1.5px. Default stays
-  `'lines'`. Display only — snapping is unaffected (backlog P47,
-  from the plesfeda v1 port).
+- `GridConfig.pattern: 'lines' | 'dashed' | 'cross' | 'dots'` and
+  `GridConfig.color` — `gridBackground` can now draw grid lines,
+  dashed lines, small crosses, or React Flow-style dots per cell
+  corner, in a doc-chosen color. `'dashed'`/`'cross'` render via an
+  inline SVG tile (they can't be built from plain CSS gradients and
+  therefore need a literal color — unset `color` falls back to the
+  built-in default there, while 'lines'/'dots' keep honoring the
+  `--ki-grid` / `--ki-grid-major` CSS vars). Default stays `'lines'`;
+  display only, snapping is unaffected (backlog P47, from the
+  plesfeda v1 port).
 
 ### Fixed
 

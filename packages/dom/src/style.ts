@@ -74,11 +74,11 @@ export function gridBackground(engine: Engine): {
     const cell = (w: number, stroke: string, dash: boolean) =>
       dash
         ? `<path d='M0 0.5 H${w} M0.5 0 V${w}' stroke='${stroke}' stroke-width='1' stroke-dasharray='4 3'/>`
-        : `<path d='${cross(w, 4)}' stroke='${stroke}' stroke-width='1'/>`
+        : `<path d='${cross(w, 4)}' stroke='${stroke}' stroke-width='0.5'/>`
     const cellM = (w: number, stroke: string, dash: boolean) =>
       dash
         ? `<path d='M0 0.5 H${w} M0.5 0 V${w}' stroke='${stroke}' stroke-width='1.5' stroke-dasharray='4 3'/>`
-        : `<path d='${cross(w, 5)}' stroke='${stroke}' stroke-width='1.5'/>`
+        : `<path d='${cross(w, 5)}' stroke='${stroke}' stroke-width='1'/>`
     if (m && m > 1) {
       const ms = sPx * m
       return {

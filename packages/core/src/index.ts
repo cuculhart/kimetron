@@ -124,6 +124,12 @@ export {
 
   bendEdges,
 
+  setShapePoint,
+
+  insertShapePoint,
+
+  removeShapePoint,
+
 } from './doc'
 
 export type { RouteAxis, ZOrder } from './doc'

@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Shape vertex editing (P48): the single-selected shape object
+  (line/curve/polygon) now shows a `.ki-vtx` grip per anchor. Dragging
+  a grip runs a `vertex` mode gesture — pointer position honors
+  grid/object snap with guides, rotated objects edit in their local
+  frame, and every move patches the doc live (`patchDoc`) so the grip
+  drag commits as one undoable step (`commitDoc` on pointerUp).
+  Double-clicking a grip deletes the anchor (minimum counts are kept:
+  curve ≥ 2, polygon ≥ 3); double-clicking the outline of a selected
+  curve/polygon inserts an anchor on the nearest segment.
+- `@kimetron/core`: `setShapePoint` / `insertShapePoint` /
+  `removeShapePoint` — move/insert/delete a shape anchor and
+  re-normalize the object's bbox (degenerate axes collapse to
+  fraction 0.5). Plus `Engine.startVertexMove`,
+  `Engine.insertShapeVertex`, `Engine.deleteShapeVertex` and the
+  `'vertex'` mode.
+- `@kimetron/dom`: `vertexHandlePoints` — screen-space grip points
+  riding the object's rotation. `input.ts` routes pointerdown on
+  `[data-ki-vtx]` and dblclick on grips/outline (deferred pointer
+  capture so click/dblclick still reach the handle).
+
+### Fixed
+
+- `@kimetron/dom`, `@kimetron/react`: shape `<svg>` viewports are
+  clamped to a 1px minimum. An `<svg>` element with a zero (or
+  sub-pixel) width/height disables rendering entirely —
+  `overflow: visible` cannot rescue it — so a line or shape resized to
+  a degenerate bbox (e.g. zero height) vanished. The chord now keeps
+  painting. (Reported from silim-murlun: horizontal/vertical lines
+  disappear after resizing one dimension to zero.)
+
 ## [1.4.1] - 2026-10-27
 
 ### Fixed

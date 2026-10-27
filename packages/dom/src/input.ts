@@ -27,8 +27,21 @@ export function attachInput(el: HTMLElement, engine: Engine): () => void {
     const port = (e.target as HTMLElement).closest?.(
       '[data-ki-port]',
     ) as HTMLElement | null
+    const vtx = (e.target as HTMLElement).closest?.(
+      '[data-ki-vtx]',
+    ) as HTMLElement | null
     if (rot?.dataset.kiObj) {
       engine.startRotate(toLocal(e), rot.dataset.kiObj)
+    } else if (vtx?.dataset.kiObj) {
+      // vertex handles also answer dblclick (delete) — defer capture
+      // like the generic path so click/dblclick reach the handle
+      engine.startVertexMove(
+        toLocal(e),
+        vtx.dataset.kiObj,
+        Number(vtx.dataset.kiVtx),
+      )
+      wantCapture = true
+      return
     } else if (bend?.dataset.kiEdge) {
       engine.startBend(toLocal(e), bend.dataset.kiEdge)
     } else if (handle?.dataset.kiObj) {
@@ -101,10 +114,29 @@ export function attachInput(el: HTMLElement, engine: Engine): () => void {
     }
   }
 
+  const dbl = (e: MouseEvent) => {
+    const vtx = (e.target as HTMLElement).closest?.(
+      '[data-ki-vtx]',
+    ) as HTMLElement | null
+    if (vtx?.dataset.kiObj) {
+      // vertex dblclick = delete the anchor
+      engine.deleteShapeVertex(vtx.dataset.kiObj, Number(vtx.dataset.kiVtx))
+      e.preventDefault()
+      e.stopPropagation()
+      return
+    }
+    // segment dblclick = insert a vertex on the selected curve/polygon
+    if (engine.insertShapeVertex(toLocal(e))) {
+      e.preventDefault()
+      e.stopPropagation()
+    }
+  }
+
   el.addEventListener('pointerdown', down)
   el.addEventListener('pointermove', move)
   el.addEventListener('pointerup', up)
   el.addEventListener('pointercancel', up)
+  el.addEventListener('dblclick', dbl)
   el.addEventListener('wheel', wheel, { passive: false })
 
   return () => {
@@ -112,6 +144,7 @@ export function attachInput(el: HTMLElement, engine: Engine): () => void {
     el.removeEventListener('pointermove', move)
     el.removeEventListener('pointerup', up)
     el.removeEventListener('pointercancel', up)
+    el.removeEventListener('dblclick', dbl)
     el.removeEventListener('wheel', wheel)
   }
 }

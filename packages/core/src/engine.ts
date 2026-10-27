@@ -7,14 +7,17 @@ import {
   edgeEndpoints,
   edgeOutwardDirs,
   endpointPos,
+  insertShapePoint as docInsertShapePoint,
   moveObjects,
   removeEdges,
   removeObjects,
+  removeShapePoint as docRemoveShapePoint,
   reorderObjects,
   renderOrder,
   resizeObject,
   retargetEdge,
   rotateObject,
+  setShapePoint,
   type ZOrder,
 } from './doc'
 import { distToGeom, distToSegment, edgeGeom } from './edge'
@@ -30,7 +33,7 @@ import {
   screenToWorld,
   worldToScreen,
 } from './geometry'
-import { footprintOf, hitObject, shapeSnapPoints } from './shape'
+import { footprintOf, hitObject, isShapeKind, shapeAnchors, shapeSnapPoints } from './shape'
 import type { Doc, Edge, EdgeEndpoint, EdgeRoute, GridConfig, Origin, Pt, Rect, Unit, Viewport, WorldConfig, WorldObject } from './types'
 import { formatScale, unitToPx } from './units'
 
@@ -43,6 +46,7 @@ export type Mode =
   | 'connect'
   | 'rotate'
   | 'bend'
+  | 'vertex'
 
 export interface PointerOpts {
   button?: number
@@ -157,6 +161,10 @@ export class Engine {
       topmost first). Lets apps deprioritize background linework
       without removing it from hit-testing entirely. */
   hitPriority?: (o: WorldObject) => number
+  /** In-progress vertex gesture: target object + anchor index. The doc
+      is patched live via `patchDoc` (renders follow immediately) and
+      folded into one undo step by `commitDoc` on pointerUp. */
+  vertex: { id: string; index: number } | null = null
   /** In-progress rotate gesture preview: target id and live angle (deg). */
   rotate: { id: string; deg: number } | null = null
   /** Angle snap for the rotate gesture while `pointerMove`'s
@@ -672,6 +680,58 @@ export class Engine {
     this.cursorWorld = this.screenToWorld(pt)
   }
 
+  /** Begin a vertex gesture — drag anchor `index` of a shape-kind
+      object. Each move patches the doc live; pointerUp commits once. */
+  startVertexMove(pt: Pt, objId: string, index: number): void {
+    const o = this.objById(objId)
+    if (!o || o.locked || !isShapeKind(o.kind)) return
+    if (index < 0 || index >= shapeAnchors(o).length) return
+    this.mode = 'vertex'
+    this.vertex = { id: objId, index }
+    this.cursorWorld = this.screenToWorld(pt)
+  }
+
+  /** Insert a vertex into the single-selected curve/polygon at the
+      nearest anchor segment to `pt` (screen px). Returns false when
+      no eligible shape is selected or the point is off the outline. */
+  insertShapeVertex(pt: Pt): boolean {
+    if (this.selectedIds.size !== 1) return false
+    const o = this.objById([...this.selectedIds][0])
+    if (!o || o.locked) return false
+    if (o.kind !== 'curve' && o.kind !== 'polygon') return false
+    const anchors = shapeAnchors(o)
+    if (anchors.length < 2) return false
+    const w = this.screenToWorld(pt)
+    const lp = o.rot ? invRotPt(w, objCenter(o), o.rot) : w
+    const wp = anchors.map((p) => objPoint(o, p.fx, p.fy))
+    const n = o.kind === 'polygon' ? wp.length : wp.length - 1
+    const tol = HIT_TOL_PX / (unitToPx(this.doc.units) * this.viewport.zoom)
+    let seg = -1
+    let bd = tol
+    for (let i = 0; i < n; i++) {
+      const d = distToSegment(lp, wp[i], wp[(i + 1) % wp.length])
+      if (d <= bd) {
+        bd = d
+        seg = i
+      }
+    }
+    if (seg < 0) return false
+    const next = docInsertShapePoint(this.doc, o.id, seg, lp)
+    if (next === this.doc) return false
+    this.doc = next
+    this.emitDoc()
+    return true
+  }
+
+  /** Delete anchor `index` of a shape object — respects the minimum
+      anchor counts enforced by `removeShapePoint`. */
+  deleteShapeVertex(id: string, index: number): void {
+    const next = docRemoveShapePoint(this.doc, id, index)
+    if (next === this.doc) return
+    this.doc = next
+    this.emitDoc()
+  }
+
   /** Begin a connect gesture from a port (or object center if port omitted).
       If `rewireEdge` returns an existing edge for the grabbed endpoint, the
       gesture rewires that edge instead of creating a new one. */
@@ -1024,6 +1084,41 @@ export class Engine {
       return
     }
 
+    if (this.mode === 'vertex' && this.vertex) {
+      const g = this.doc.grid
+      const tol = SNAP_TOL_PX / (unitToPx(this.doc.units) * this.viewport.zoom)
+      const { xs, ys } = this.snapObjects
+        ? this.snapTargets(new Set([this.vertex.id]))
+        : { xs: [], ys: [] }
+      this.guides = []
+      let wx = w.x
+      let wy = w.y
+      const sx = nearest(w.x, xs, tol)
+      if (sx !== null) {
+        wx = sx
+        this.guides.push({ axis: 'x', at: sx })
+      } else if (g.snap && g.size > 0) {
+        wx = Math.round(w.x / g.size) * g.size
+      }
+      const sy = nearest(w.y, ys, tol)
+      if (sy !== null) {
+        wy = sy
+        this.guides.push({ axis: 'y', at: sy })
+      } else if (g.snap && g.size > 0) {
+        wy = Math.round(w.y / g.size) * g.size
+      }
+      const o = this.objById(this.vertex.id)
+      if (o) {
+        // rotated objects edit in their local frame — inverse-rotate
+        // the (snapped) pointer about the current center
+        const lp = o.rot
+          ? invRotPt({ x: wx, y: wy }, objCenter(o), o.rot)
+          : { x: wx, y: wy }
+        this.patchDoc(setShapePoint(this.doc, o.id, this.vertex.index, lp))
+      }
+      return
+    }
+
     if (this.mode === 'connect' && this.connect) {
       const c = this.connect
       const anchor = this.connectAnchor() ?? c.from
@@ -1180,6 +1275,10 @@ export class Engine {
         this.emitDoc()
       }
     }
+    if (this.mode === 'vertex' && this.vertex) {
+      // folds the live patchDoc edits into one undoable commit
+      this.commitDoc()
+    }
     this.mode = 'idle'
     this.dragDelta = null
     this.dragIds = []
@@ -1190,6 +1289,7 @@ export class Engine {
     this.resize = null
     this.resizeId = null
     this.resizeOrig = null
+    this.vertex = null
     this.marquee = null
     this.rotate = null
     this.rotateId = null

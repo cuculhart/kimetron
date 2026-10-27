@@ -1392,3 +1392,128 @@ describe('spatial index (v1.3)', () => {
     expect(e.objectAt(e.worldToScreen({ x: 200, y: 200 }))).toBe(null)
   })
 })
+
+describe('shape vertex editing (P48)', () => {
+  const cfg = {
+    units: 'mm' as const,
+    origin: 'bottom-left' as const,
+    grid: { size: 10, snap: true },
+  }
+  const line: WorldObject = {
+    id: 'l',
+    kind: 'line',
+    x: 0,
+    y: 0,
+    w: 40,
+    h: 30,
+    // no points → default chord (0,0)→(1,1)
+  }
+  const curve: WorldObject = {
+    id: 'c',
+    kind: 'curve',
+    x: 0,
+    y: 0,
+    w: 40,
+    h: 20,
+    shape: {
+      points: [
+        { fx: 0, fy: 0.5 },
+        { fx: 0.5, fy: 1 },
+        { fx: 1, fy: 0.5 },
+      ],
+    },
+  }
+  const make = (objs: WorldObject[]) => {
+    const e = new Engine(cfg, objs)
+    e.viewport = { x: 0, y: 500, zoom: 1 }
+    return e
+  }
+
+  it('setShapePoint re-normalizes bbox and anchors', () => {
+    const e = make([line])
+    // drag anchor 0 to (-10,-10): bbox grows, anchor1 stays at fx=fy=1
+    const next = e.doc.objects[0]
+    e.startVertexMove({ x: 0, y: 0 }, 'l', 0)
+    e.pointerMove(e.worldToScreen({ x: -8, y: -8 })) // snaps to (-10,-10)
+    e.pointerUp()
+    const o = e.doc.objects[0]
+    expect(o).toMatchObject({ x: -10, y: -10, w: 50, h: 40 })
+    expect(o.shape?.points).toEqual([
+      { fx: 0, fy: 0 },
+      { fx: 1, fy: 1 },
+    ])
+    expect(next).not.toBe(o)
+  })
+
+  it('live preview patches the doc silently; pointerUp commits once', () => {
+    const e = make([line])
+    let emitted = 0
+    e.onDocChange(() => emitted++)
+    e.startVertexMove({ x: 0, y: 0 }, 'l', 1)
+    e.pointerMove(e.worldToScreen({ x: 55, y: 35 })) // snaps to (60,40)? → (50,40)
+    // during the gesture the doc is already patched (renderers follow),
+    // but no history entry / docListener fires yet
+    expect(emitted).toBe(0)
+    expect(e.doc.objects[0].w).toBeGreaterThan(40)
+    e.pointerUp()
+    expect(emitted).toBe(1)
+    expect(e.vertex).toBeNull()
+    expect(e.mode).toBe('idle')
+    // one undo restores the whole gesture
+    e.undo()
+    expect(e.doc.objects[0]).toMatchObject({ x: 0, y: 0, w: 40, h: 30 })
+  })
+
+  it('collapses a fully degenerate axis to fraction 0.5', () => {
+    const e = make([line])
+    e.startVertexMove({ x: 0, y: 0 }, 'l', 1)
+    e.pointerMove(e.worldToScreen({ x: -2, y: -2 })) // snaps to (0,0)
+    e.pointerUp()
+    const o = e.doc.objects[0]
+    // snapped -0 may survive — normalize before comparing
+    expect([o.x + 0, o.y + 0, o.w + 0, o.h + 0]).toEqual([0, 0, 0, 0])
+    expect(o.shape?.points).toEqual([
+      { fx: 0.5, fy: 0.5 },
+      { fx: 0.5, fy: 0.5 },
+    ])
+  })
+
+  it('ignores out-of-range indices and non-shape kinds', () => {
+    const e = make([line, { id: 'r', kind: 'rect', x: 0, y: 0, w: 10, h: 10 }])
+    e.startVertexMove({ x: 0, y: 0 }, 'l', 5)
+    expect(e.mode).toBe('idle')
+    e.startVertexMove({ x: 0, y: 0 }, 'r', 0)
+    expect(e.mode).toBe('idle')
+  })
+
+  it('insertShapeVertex adds an anchor on the nearest segment', () => {
+    const e = make([curve])
+    e.setSelection(['c'])
+    // dblclick near the first segment midpoint (world 10,15)
+    expect(e.insertShapeVertex(e.worldToScreen({ x: 10, y: 15 }))).toBe(true)
+    const pts = e.doc.objects[0].shape!.points!
+    expect(pts).toHaveLength(4)
+    // bbox re-normalizes to (0,10)-(40,20) — inserted world (10,15)
+    // lands at fx=0.25, fy=0.5
+    expect(pts[1].fx).toBeCloseTo(0.25)
+    expect(pts[1].fy).toBeCloseTo(0.5)
+    // far from the outline → no insert
+    expect(e.insertShapeVertex(e.worldToScreen({ x: 200, y: 200 }))).toBe(false)
+    // a 'line' keeps its two-anchor contract
+    const el = make([line])
+    el.setSelection(['l'])
+    expect(el.insertShapeVertex(el.worldToScreen({ x: 20, y: 15 }))).toBe(false)
+  })
+
+  it('deleteShapeVertex removes an anchor, honoring the minimum', () => {
+    const e = make([curve])
+    e.deleteShapeVertex('c', 1)
+    const o = e.doc.objects[0]
+    expect(o.shape!.points).toHaveLength(2)
+    // bbox shrinks to the remaining anchors (10,10)-(40,10) → degenerate h
+    expect(o).toMatchObject({ x: 0, y: 10, w: 40, h: 0 })
+    // curve at the 2-anchor minimum refuses further deletion
+    e.deleteShapeVertex('c', 0)
+    expect(e.doc.objects[0].shape!.points).toHaveLength(2)
+  })
+})

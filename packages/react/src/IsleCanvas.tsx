@@ -2,7 +2,7 @@ import { useEffect, useRef, useSyncExternalStore } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { Engine, isShapeKind, renderOrder } from '@kimetron/core'
 import type { Doc, WorldConfig, WorldObject } from '@kimetron/core'
-import { attachInput, bendHandlePoint, DOUBLE_INNER, doubleWidths, EDGE_LINE, edgeAttrs, edgeMarkerDefs, gridBackground, handlePointsFor, hudText, injectStyles, marqueeFrame, objectFrame, pageFrame, portPoints, rotateHandlePoint, routePathD, shapeAttrs, shapeCapMarkerDefs } from '@kimetron/dom'
+import { attachInput, bendHandlePoint, DOUBLE_INNER, doubleWidths, EDGE_LINE, edgeAttrs, edgeMarkerDefs, gridBackground, handlePointsFor, hudText, injectStyles, marqueeFrame, objectFrame, pageFrame, portPoints, rotateHandlePoint, routePathD, shapeAttrs, shapeCapMarkerDefs, vertexHandlePoints } from '@kimetron/dom'
 
 export function useEngine(cfg?: WorldConfig): Engine {
   const ref = useRef<Engine | null>(null)
@@ -71,6 +71,7 @@ export function IsleCanvas({
   const handles = selObj ? handlePointsFor(engine, selObj) : []
   const rotHandle = selObj ? rotateHandlePoint(engine, selObj) : null
   const bendHandle = bendHandlePoint(engine)
+  const vtxHandles = selObj ? vertexHandlePoints(engine, selObj) : []
 
   return (
     <div
@@ -175,7 +176,14 @@ export function IsleCanvas({
             }}
           >
             {shape ? (
-              <svg className="ki-shape-svg" width={f.width} height={f.height}>
+              // a 0-size <svg> disables rendering entirely — overflow:visible
+              // cannot rescue it — so degenerate shapes (a line resized to
+              // zero height) need a nonzero viewport for their chord to paint
+              <svg
+                className="ki-shape-svg"
+                width={Math.max(1, f.width)}
+                height={Math.max(1, f.height)}
+              >
                 <defs>
                   {shapeCapMarkerDefs(engine, o).map((m) => (
                     <marker
@@ -275,6 +283,17 @@ export function IsleCanvas({
           }}
         />
       )}
+      <div className="ki-vtxs">
+        {vtxHandles.map((v) => (
+          <div
+            key={v.index}
+            className="ki-vtx"
+            data-ki-vtx={v.index}
+            data-ki-obj={selObj?.id}
+            style={{ transform: `translate(${v.x}px, ${v.y}px)` }}
+          />
+        ))}
+      </div>
       {marquee && (
         <div
           className="ki-marquee"

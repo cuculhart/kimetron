@@ -1,4 +1,5 @@
 import { objPoint } from './geometry'
+import { isShapeKind, shapeAnchors } from './shape'
 import type { Doc, Edge, EdgeEndpoint, Pt, WorldConfig, WorldObject } from './types'
 
 export function createDocument(cfg: WorldConfig = {}): Doc {
@@ -243,6 +244,84 @@ export function resizeObject(
     objects: doc.objects.map((o) =>
       o.id === id ? { ...o, x: r.x, y: r.y, w: r.w, h: r.h } : o,
     ),
+  }
+}
+
+/** Rebuild a shape object's bbox so it tightly contains `pts`
+    (unrotated-frame world coords) and renormalize its anchors.
+    Degenerate axes collapse to fraction 0.5. */
+function reframeAnchors(o: WorldObject, pts: Pt[]): WorldObject {
+  const x1 = Math.min(...pts.map((p) => p.x))
+  const y1 = Math.min(...pts.map((p) => p.y))
+  const x2 = Math.max(...pts.map((p) => p.x))
+  const y2 = Math.max(...pts.map((p) => p.y))
+  const w = x2 - x1
+  const h = y2 - y1
+  return {
+    ...o,
+    x: x1,
+    y: y1,
+    w,
+    h,
+    shape: {
+      ...o.shape,
+      points: pts.map((p) => ({
+        fx: w > 0 ? (p.x - x1) / w : 0.5,
+        fy: h > 0 ? (p.y - y1) / h : 0.5,
+      })),
+    },
+  }
+}
+
+/** Move anchor `index` of a shape object to `pt` (unrotated-frame
+    world coords — inverse-rotate first when the object is rotated).
+    The object's bbox re-normalizes around all anchors. */
+export function setShapePoint(doc: Doc, id: string, index: number, pt: Pt): Doc {
+  const o = doc.objects.find((o) => o.id === id)
+  if (!o || !isShapeKind(o.kind)) return doc
+  const anchors = shapeAnchors(o)
+  if (index < 0 || index >= anchors.length) return doc
+  const pts = anchors.map((p) => objPoint(o, p.fx, p.fy))
+  pts[index] = pt
+  return {
+    ...doc,
+    objects: doc.objects.map((x) => (x === o ? reframeAnchors(o, pts) : x)),
+  }
+}
+
+/** Insert an anchor into a 'curve'/'polygon' object between anchors
+    `segIndex` and `segIndex+1` (the polygon's closing segment wraps).
+    `pt` is in the object's unrotated frame. 'line' keeps exactly two
+    anchors, so insertion is rejected there. */
+export function insertShapePoint(doc: Doc, id: string, segIndex: number, pt: Pt): Doc {
+  const o = doc.objects.find((o) => o.id === id)
+  if (!o || (o.kind !== 'curve' && o.kind !== 'polygon')) return doc
+  const anchors = shapeAnchors(o)
+  const maxSeg = o.kind === 'polygon' ? anchors.length : anchors.length - 1
+  if (segIndex < 0 || segIndex >= maxSeg) return doc
+  const pts = anchors.map((p) => objPoint(o, p.fx, p.fy))
+  pts.splice(segIndex + 1, 0, pt)
+  return {
+    ...doc,
+    objects: doc.objects.map((x) => (x === o ? reframeAnchors(o, pts) : x)),
+  }
+}
+
+/** Remove anchor `index` of a 'curve'/'polygon' object — the bbox
+    re-normalizes around the remaining anchors. Minimum counts are
+    enforced (curve ≥ 2, polygon ≥ 3); 'line' is rejected. */
+export function removeShapePoint(doc: Doc, id: string, index: number): Doc {
+  const o = doc.objects.find((o) => o.id === id)
+  if (!o || (o.kind !== 'curve' && o.kind !== 'polygon')) return doc
+  const anchors = shapeAnchors(o)
+  const min = o.kind === 'polygon' ? 3 : 2
+  if (index < 0 || index >= anchors.length || anchors.length <= min) return doc
+  const pts = anchors
+    .map((p) => objPoint(o, p.fx, p.fy))
+    .filter((_, i) => i !== index)
+  return {
+    ...doc,
+    objects: doc.objects.map((x) => (x === o ? reframeAnchors(o, pts) : x)),
   }
 }
 

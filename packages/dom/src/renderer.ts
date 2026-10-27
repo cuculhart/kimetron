@@ -20,6 +20,7 @@ import {
   routePathD,
   shapeAttrs,
   shapeCapMarkerDefs,
+  vertexHandlePoints,
 } from './style'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
@@ -118,6 +119,10 @@ export function createRenderer(container: HTMLElement, opts: RendererOptions): R
   bendEl.hidden = true
   container.appendChild(bendEl)
 
+  const vtxLayer = document.createElement('div')
+  vtxLayer.className = 'ki-vtxs'
+  container.appendChild(vtxLayer)
+
   function render(): void {
     const seen = new Set<string>()
     const ordered = renderOrder(engine.doc.objects)
@@ -150,8 +155,10 @@ export function createRenderer(container: HTMLElement, opts: RendererOptions): R
         if (sa) {
           const svg = document.createElementNS(SVG_NS, 'svg')
           svg.setAttribute('class', 'ki-shape-svg')
-          svg.setAttribute('width', String(f.width))
-          svg.setAttribute('height', String(f.height))
+          // a 0-size <svg> disables rendering entirely — overflow:visible
+          // cannot rescue it — so degenerate shapes need a nonzero viewport
+          svg.setAttribute('width', String(Math.max(1, f.width)))
+          svg.setAttribute('height', String(Math.max(1, f.height)))
           const defs = document.createElementNS(SVG_NS, 'defs')
           for (const m of shapeCapMarkerDefs(engine, o)) defs.appendChild(markerEl(m))
           const kids: SVGElement[] = [defs]
@@ -246,6 +253,17 @@ export function createRenderer(container: HTMLElement, opts: RendererOptions): R
     } else {
       bendEl.hidden = true
     }
+
+    vtxLayer.replaceChildren(
+      ...(selObj ? vertexHandlePoints(engine, selObj) : []).map((v) => {
+        const el = document.createElement('div')
+        el.className = 'ki-vtx'
+        el.dataset.kiObj = selObj!.id
+        el.dataset.kiVtx = String(v.index)
+        el.style.transform = `translate(${v.x}px, ${v.y}px)`
+        return el
+      }),
+    )
 
     const defs = document.createElementNS(SVG_NS, 'defs')
     for (const e of engine.doc.edges) {
@@ -364,6 +382,7 @@ export function createRenderer(container: HTMLElement, opts: RendererOptions): R
       for (const el of handleEls) el.remove()
       rotEl.remove()
       bendEl.remove()
+      vtxLayer.remove()
       pageEl.remove()
       hudEl.remove()
       marqueeEl.remove()

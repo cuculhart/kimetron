@@ -1,5 +1,5 @@
 import type { Edge, EdgeMarker, EdgeRoute, Engine, Origin, Port, Pt, ResizeDir, WorldObject } from '@kimetron/core'
-import { arcAngles, arcPoint, edgeAxis, edgeEndpoints, edgeGeom, edgeOutwardDirs, formatLength, objPoint, shapeAnchors, unitToPx, type RouteAxis } from '@kimetron/core'
+import { arcAngles, arcPoint, edgeAxis, edgeEndpoints, edgeGeom, edgeOutwardDirs, formatLength, objCenter, objPoint, rotPt, shapeAnchors, unitToPx, type RouteAxis } from '@kimetron/core'
 
 export interface Frame {
   left: number
@@ -237,6 +237,25 @@ export function handlePointsFor(engine: Engine, o: WorldObject): HandlePoint[] {
   return handlePoints(f).map((h) => {
     const p = rotScreen({ x: h.x, y: h.y }, c, f.rot ?? 0)
     return { dir: h.dir, x: p.x, y: p.y, cursor: cursorForAngle(p.x - c.x, p.y - c.y) }
+  })
+}
+
+/** Screen-space vertex handles for a shape object — one grip per
+    shape anchor (line/curve/polygon). Rotation-aware. Empty for
+    kinds without anchors (ellipse/arc) and for locked objects. */
+export function vertexHandlePoints(
+  engine: Engine,
+  o: WorldObject,
+): { index: number; x: number; y: number }[] {
+  if (o.locked) return []
+  const anchors = shapeAnchors(o)
+  if (anchors.length === 0) return []
+  const c = objCenter(o)
+  return anchors.map((p, i) => {
+    const w0 = objPoint(o, p.fx, p.fy)
+    const w = o.rot ? rotPt(w0, c, o.rot) : w0
+    const s = engine.worldToScreen(w)
+    return { index: i, x: s.x, y: s.y }
   })
 }
 
@@ -627,6 +646,9 @@ export function injectStyles(): void {
 .ki-rot[hidden] { display: none; }
 .ki-bend { position: absolute; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; background: #fff; border: 1.5px solid var(--ki-sel, #3a7bd5); border-radius: 2px; box-sizing: border-box; z-index: 10; }
 .ki-bend[hidden] { display: none; }
+.ki-vtxs { position: absolute; inset: 0; pointer-events: none; z-index: 11; }
+.ki-vtx { position: absolute; width: 8px; height: 8px; margin: -4px 0 0 -4px; background: #fff; border: 1.5px solid var(--ki-sel, #3a7bd5); border-radius: 2px; box-sizing: border-box; cursor: move; pointer-events: auto; }
+.ki-vtx:hover { background: var(--ki-sel, #3a7bd5); }
 .ki-guides { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 .ki-guide { position: absolute; background: var(--ki-guide, #e0393e); }
 .ki-guide-v { top: 0; bottom: 0; width: 1px; }

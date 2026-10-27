@@ -195,6 +195,7 @@ export function createRenderer(container: HTMLElement, opts: RendererOptions): R
         else el.appendChild(content)
         el.style.background = o.style?.fill ?? ''
         el.style.borderColor = sel ? '' : (o.style?.stroke ?? '')
+        el.style.borderWidth = `${o.style?.width ?? 1}px`
       }
     }
     for (const [id, el] of objEls) {

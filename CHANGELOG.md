@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-10-27
+
+### Fixed
+
+- `@kimetron/dom`, `@kimetron/react`: non-shape object frames now use
+  `style.width` for their border width instead of the fixed 1px from
+  `.ki-obj`. Objects with `style.width: 0` no longer show a stray thin
+  frame. (Reported from silim-murlun: a rectangle with stroke width 0
+  still showed a faint border.)
+
 ## [1.4.0] - 2026-10-25
 
 ### Added

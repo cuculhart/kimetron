@@ -1,6 +1,6 @@
 {
   "name": "@kimetron/react",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "license": "MIT",
   "description": "Kimetron Isle — React adapter (thin components and hooks).",
   "type": "module",

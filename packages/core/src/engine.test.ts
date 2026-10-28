@@ -1517,3 +1517,56 @@ describe('shape vertex editing (P48)', () => {
     expect(e.doc.objects[0].shape!.points).toHaveLength(2)
   })
 })
+
+describe('multi-point shape draw (P49) and resizeAspect', () => {
+  const e = () => new Engine({ units: 'mm', origin: 'top-left', grid: { size: 5, snap: true } })
+  const click = (en: Engine, x: number, y: number) => {
+    en.pointerDown(en.worldToScreen({ x, y }))
+    en.pointerUp()
+  }
+
+  it('click chain builds a curve object with normalized anchors', () => {
+    const en = e()
+    en.startShapeDraw('curve')
+    click(en, 10, 10)
+    click(en, 20, 30)
+    click(en, 40, 10)
+    expect(en.mode).toBe('shape') // click chain survives pointerUp
+    const o = en.commitShapeDraw('c1')
+    expect(o).not.toBeNull()
+    expect(o).toMatchObject({ id: 'c1', kind: 'curve', x: 10, y: 10, w: 30, h: 20 })
+    expect(o!.shape!.points!.map((p) => [p.fx, p.fy])).toEqual([
+      [0, 0],
+      [expect.closeTo(1 / 3), 1],
+      [1, 0],
+    ])
+    expect(en.selectedIds.has('c1')).toBe(true)
+    expect(en.mode).toBe('idle')
+  })
+
+  it('commit with <2 points discards; cancel aborts', () => {
+    const en = e()
+    en.startShapeDraw()
+    click(en, 5, 5)
+    expect(en.commitShapeDraw('x')).toBeNull()
+    en.startShapeDraw()
+    click(en, 0, 0)
+    click(en, 5, 5)
+    en.cancelShapeDraw()
+    expect(en.shapeDraw).toBeNull()
+    expect(en.doc.objects).toHaveLength(0)
+  })
+
+  it('resizeAspect constrains corner drags to the h/w ratio', () => {
+    const en = e()
+    en.doc.objects.push({ id: 'im', kind: 'image', x: 0, y: 0, w: 20, h: 10 })
+    en.resizeAspect = (o) => (o.id === 'im' ? 0.5 : null)
+    en.startResize(en.worldToScreen({ x: 20, y: 10 }), 'im', { x: 1, y: 1 })
+    // grid snap off → free pointer; drag far right, aspect pulls h
+    en.doc.grid.snap = false
+    en.pointerMove(en.worldToScreen({ x: 60, y: 15 }))
+    expect(en.resize!.rect.w).toBeCloseTo(60)
+    expect(en.resize!.rect.h).toBeCloseTo(30)
+    en.pointerUp()
+  })
+})

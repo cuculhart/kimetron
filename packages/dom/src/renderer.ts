@@ -25,22 +25,33 @@ import {
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
 
-function markerEl(def: { id: string; kind: string; color: string }): SVGMarkerElement {
+function markerEl(def: {
+  id: string
+  kind: string
+  color: string
+  strokeW?: number
+}): SVGMarkerElement {
   const m = document.createElementNS(SVG_NS, 'marker')
   m.setAttribute('id', def.id)
   m.setAttribute('markerUnits', 'userSpaceOnUse')
   m.setAttribute('orient', 'auto-start-reverse')
+  // caps stay proportional to the stroke: thin lines keep the 2px
+  // baseline size, thicker ones scale the glyph up via viewBox so
+  // the marker is not buried inside the line.
+  const k = Math.max(1, (def.strokeW ?? 2) / 2)
   let glyph: SVGElement
   if (def.kind === 'arrow') {
-    m.setAttribute('markerWidth', '10')
-    m.setAttribute('markerHeight', '8')
+    m.setAttribute('markerWidth', String(10 * k))
+    m.setAttribute('markerHeight', String(8 * k))
+    m.setAttribute('viewBox', '0 0 10 8')
     m.setAttribute('refX', '9')
     m.setAttribute('refY', '4')
     glyph = document.createElementNS(SVG_NS, 'path')
     glyph.setAttribute('d', 'M 0 0 L 10 4 L 0 8 z')
   } else {
-    m.setAttribute('markerWidth', '8')
-    m.setAttribute('markerHeight', '8')
+    m.setAttribute('markerWidth', String(8 * k))
+    m.setAttribute('markerHeight', String(8 * k))
+    m.setAttribute('viewBox', '0 0 8 8')
     m.setAttribute('refX', '4')
     m.setAttribute('refY', '4')
     glyph = document.createElementNS(SVG_NS, 'circle')
@@ -134,6 +145,7 @@ export function createRenderer(container: HTMLElement, opts: RendererOptions): R
         el = document.createElement('div')
         el.className = 'ki-obj'
         el.dataset.id = o.id
+        el.dataset.kiObj = o.id
         container.appendChild(el)
         objEls.set(o.id, el)
       }

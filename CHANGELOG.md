@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-10-28
+
+### Added
+
+- Multi-point shape draw (P49): `Engine.startShapeDraw(kind)` arms a
+  `'shape'` mode where each left-button `pointerDown` appends a
+  grid-snapped point. `commitShapeDraw(id, extra?)` builds the
+  object (2+ points; `shape.points` normalized into the bounding
+  box) and selects it; `cancelShapeDraw()` aborts. The gesture
+  survives click chains — `pointerUp` no longer ends the mode.
+  `engine.shapeDraw` exposes `{ kind, pts }` for previews.
+- `Engine.resizeAspect` hook — return an h/w ratio for an object
+  and corner resizes grow the free axis to cover the pointer while
+  preserving the ratio (edge drags stay free).
+
+### Fixed
+
+- Cap markers (arrow/dot) on edges and shapes now scale with the
+  stroke width. `markerUnits` stays `userSpaceOnUse` but the marker
+  viewport carries a `viewBox`, so the glyph grows proportionally
+  for strokes above ~2px — thick lines no longer bury their caps.
+- Object elements now carry `data-ki-obj` (same id as `data-id`).
+  DOM-level `closest('[data-ki-obj]')` lookups — used by drivers for
+  context menus and click routing — previously resolved only via
+  chrome elements (handles/vertices/ports), so right-clicks on an
+  unselected shape could not identify their object.
+
 ## [1.5.0] - 2026-10-27
 
 ### Added

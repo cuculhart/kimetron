@@ -603,13 +603,18 @@ export interface EdgeMarkerDef {
   id: string
   kind: EdgeMarker
   color: string
+  /** Stroke width (screen px) of the carrier path — caps scale up
+      with it so thick strokes don't swallow the marker. */
+  strokeW?: number
 }
 
 export function edgeMarkerDefs(engine: Engine, e: Edge): EdgeMarkerDef[] {
   const color = engine.selectedIds.has(e.id) ? SEL_COLOR : (e.style?.color ?? EDGE_LINE)
   const defs: EdgeMarkerDef[] = []
-  if (e.markerStart) defs.push({ id: markerId(e, 'start'), kind: e.markerStart, color })
-  if (e.markerEnd) defs.push({ id: markerId(e, 'end'), kind: e.markerEnd, color })
+  if (e.markerStart)
+    defs.push({ id: markerId(e, 'start'), kind: e.markerStart, color, strokeW: e.style?.width })
+  if (e.markerEnd)
+    defs.push({ id: markerId(e, 'end'), kind: e.markerEnd, color, strokeW: e.style?.width })
   return defs
 }
 
@@ -620,9 +625,9 @@ export function shapeCapMarkerDefs(engine: Engine, o: WorldObject): EdgeMarkerDe
     : (o.style?.stroke ?? SHAPE_LINE)
   const defs: EdgeMarkerDef[] = []
   if (o.style?.capStart)
-    defs.push({ id: shapeCapMarkerId(o, 's'), kind: o.style.capStart, color })
+    defs.push({ id: shapeCapMarkerId(o, 's'), kind: o.style.capStart, color, strokeW: o.style?.width })
   if (o.style?.capEnd)
-    defs.push({ id: shapeCapMarkerId(o, 'e'), kind: o.style.capEnd, color })
+    defs.push({ id: shapeCapMarkerId(o, 'e'), kind: o.style.capEnd, color, strokeW: o.style?.width })
   return defs
 }
 

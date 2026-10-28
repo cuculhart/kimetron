@@ -47,6 +47,7 @@ export type Mode =
   | 'rotate'
   | 'bend'
   | 'vertex'
+  | 'shape'
 
 export interface PointerOpts {
   button?: number
@@ -138,6 +139,14 @@ export class Engine {
   /** Optional exception hook — return true to allow a pair of solids
       to overlap (e.g. a door object placed on a wall). */
   canOverlap?: (a: WorldObject, b: WorldObject) => boolean
+  /** Optional hook — aspect ratio (h/w) the resize gesture must hold
+      for `o` (e.g. a locked image). Corner drags grow to cover the
+      pointer while preserving the ratio; edge drags stay free. */
+  resizeAspect?: (o: WorldObject) => number | null
+  /** In-progress shape-draw gesture (P49): the driver picked a shape
+      tool and each click appends a snapped point. `commitShapeDraw`
+      turns the chain into an object; `cancelShapeDraw` discards it. */
+  shapeDraw: { kind: string; pts: Pt[] } | null = null
   /** True while the drag/resize hover position illegally overlaps a solid. */
   dragInvalid = false
   /** Extra snap candidates injected by the app (page frames, guides). */
@@ -732,6 +741,64 @@ export class Engine {
     this.emitDoc()
   }
 
+  /** Begin a multi-point shape gesture (P49). While `mode==='shape'`
+      every left-button pointerDown appends a grid-snapped point —
+      call `commitShapeDraw(id)` on Enter/dblclick to build the
+      object, or `cancelShapeDraw` on Esc. */
+  startShapeDraw(kind = 'curve'): void {
+    this.mode = 'shape'
+    this.shapeDraw = { kind, pts: [] }
+    this.emit()
+  }
+
+  /** Finish the multi-point gesture: build the shape object under
+      `id` (extra fields merged over the generated geometry), add it
+      to the doc, and select it. Returns the created object, or null
+      when fewer than two points were placed (gesture discarded). */
+  commitShapeDraw(id: string, extra: Partial<WorldObject> = {}): WorldObject | null {
+    const d = this.shapeDraw
+    this.mode = 'idle'
+    this.shapeDraw = null
+    if (!d || d.pts.length < 2) {
+      this.emit()
+      return null
+    }
+    const x0 = Math.min(...d.pts.map((p) => p.x))
+    const x1 = Math.max(...d.pts.map((p) => p.x))
+    const y0 = Math.min(...d.pts.map((p) => p.y))
+    const y1 = Math.max(...d.pts.map((p) => p.y))
+    const w = Math.max(x1 - x0, MIN_SIZE)
+    const h = Math.max(y1 - y0, MIN_SIZE)
+    const clamp01 = (v: number) => Math.min(1, Math.max(0, v))
+    const o: WorldObject = {
+      ...extra,
+      id,
+      kind: d.kind,
+      x: x0,
+      y: y0,
+      w,
+      h,
+      shape: {
+        points: d.pts.map((p) => ({
+          fx: clamp01((p.x - x0) / w),
+          fy: clamp01((p.y - y0) / h),
+        })),
+      },
+    }
+    this.doc = addObject(this.doc, o)
+    this.emitDoc()
+    this.setSelection([id])
+    return o
+  }
+
+  /** Abort the in-progress multi-point gesture. */
+  cancelShapeDraw(): void {
+    if (!this.shapeDraw) return
+    this.mode = 'idle'
+    this.shapeDraw = null
+    this.emit()
+  }
+
   /** Begin a connect gesture from a port (or object center if port omitted).
       If `rewireEdge` returns an existing edge for the grabbed endpoint, the
       gesture rewires that edge instead of creating a new one. */
@@ -849,6 +916,26 @@ export class Engine {
     this.start = pt
     this.startWorld = this.screenToWorld(pt)
     this.cursorWorld = this.startWorld
+
+    if (this.mode === 'shape' && this.shapeDraw) {
+      if (opts.button === undefined || opts.button === 0) {
+        const g = this.doc.grid
+        const w = this.startWorld
+        const sp =
+          g.snap && g.size > 0
+            ? {
+                x: Math.round(w.x / g.size) * g.size,
+                y: Math.round(w.y / g.size) * g.size,
+              }
+            : w
+        const last = this.shapeDraw.pts[this.shapeDraw.pts.length - 1]
+        if (!last || Math.hypot(sp.x - last.x, sp.y - last.y) > 1e-6) {
+          this.shapeDraw.pts.push(sp)
+        }
+      }
+      this.emit()
+      return
+    }
 
     if (opts.button === 1) {
       this.mode = 'pan'
@@ -1074,6 +1161,22 @@ export class Engine {
         r.h = Math.max(Math.abs(y1 - lp.y), MIN_SIZE)
       }
       this.resize = { id: this.resizeId, rect: r }
+      // aspect lock (resizeAspect hook): corner drags grow the free
+      // axis to cover the pointer while holding h/w
+      const ro = this.objById(this.resizeId)
+      const ar = ro ? this.resizeAspect?.(ro) : undefined
+      if (ar && ar > 0 && dir.x !== 0 && dir.y !== 0) {
+        if (r.w * ar >= r.h) {
+          const dh = r.w * ar - r.h
+          r.h += dh
+          if (dir.y < 0) r.y -= dh
+        } else {
+          const dw = r.h / ar - r.w
+          r.w += dw
+          if (dir.x < 0) r.x -= dw
+        }
+        this.resize = { id: this.resizeId, rect: r }
+      }
       if (this.collisionMode !== 'none') {
         const mover = this.objById(this.resizeId)
         this.dragInvalid =
@@ -1194,6 +1297,11 @@ export class Engine {
   }
 
   pointerUp(): void {
+    // multi-point draw survives clicks — only commit/cancel ends it
+    if (this.mode === 'shape') {
+      this.emit()
+      return
+    }
     const blocked = this.collisionMode === 'reject' && this.dragInvalid
     if (this.mode === 'drag' && this.dragDelta && !blocked) {
       const { x: dx, y: dy } = this.dragDelta

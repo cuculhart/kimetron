@@ -215,6 +215,11 @@ export function createRenderer(container: HTMLElement, opts: RendererOptions): R
         el.style.background = o.style?.fill ?? ''
         el.style.borderColor = sel ? '' : (o.style?.stroke ?? '')
         el.style.borderWidth = `${o.style?.width ?? 1}px`
+        el.style.borderStyle = o.style?.dash
+          ? o.style.dash[0] <= 2
+            ? 'dotted'
+            : 'dashed'
+          : ''
       }
     }
     for (const [id, el] of objEls) {

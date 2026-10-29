@@ -172,6 +172,11 @@ export function IsleCanvas({
                     background: o.style?.fill,
                     borderColor: sel ? undefined : o.style?.stroke,
                     borderWidth: o.style?.width ?? 1,
+                    borderStyle: o.style?.dash
+                      ? o.style.dash[0] <= 2
+                        ? 'dotted'
+                        : 'dashed'
+                      : undefined,
                   }),
             }}
           >

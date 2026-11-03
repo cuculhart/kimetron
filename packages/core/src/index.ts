@@ -164,5 +164,5 @@ export { Engine } from './engine'
 
 export type { PointerOpts, EngineListener, ResizeDir, Guide, Mode } from './engine'
 
-export const KIMETRON_VERSION = '1.6.1'
+export const KIMETRON_VERSION = '1.7.0'
 

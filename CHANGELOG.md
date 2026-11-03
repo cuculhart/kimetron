@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-11-03
+
+### Added
+
+- `@kimetron/react`: `IsleCanvas` now accepts an `objectFilter`
+  prop — objects failing the predicate are skipped entirely
+  (no frame div, no shape svg, no ports). Unlike `renderObject`,
+  which only governs a node's inner content, a rejected object
+  produces no DOM at all. Intended for viewport culling in
+  documents with many objects. Backported from the
+  kusuma-plava fork.
+
 ## [1.6.1] - 2026-10-29
 
 ### Added
